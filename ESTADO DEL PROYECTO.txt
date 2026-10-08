@@ -1,0 +1,315 @@
+================================================================================
+INVERSIONES W - ESTADO DEL PROYECTO
+Contexto fresco para continuar en cualquier momento.
+Ultima actualizacion: 2026-10-03
+================================================================================
+
+1. QUE SE ESTA CONSTRUYENDO
+--------------------------------------------------------------------------------
+Aplicacion web interna para gestionar la cartera de prestamos de "Inversiones
+W": clientes, prestamos, amortizacion, pagos, mora y rentabilidad.
+
+Es una herramienta 100% administrativa. Los clientes finales NO tienen usuario
+ni pueden iniciar sesion. Solo el personal interno (administradores, asesores,
+consulta) entra al sistema.
+
+El motor financiero NO se copio tal cual de los Excel: se corrigieron los errores
+de las plantillas y el resultado quedo verificado con pruebas automaticas contra
+los valores de referencia.
+
+
+2. UBICACION
+--------------------------------------------------------------------------------
+Carpeta raiz:  C:\Users\Wilfrank\Documents\OpenCode\Inversiones W
+Codigo:        C:\Users\Wilfrank\Documents\OpenCode\Inversiones W\app
+
+Este documento vive en:  app\ESTADO DEL PROYECTO.txt
+Repositorio Git:          https://github.com/WilVM2001/InversionesW
+Rama:                     master (el repo Git es la carpeta app, NO la raiz)
+
+Archivos originales de referencia (estan fuera del repo, NO modificar):
+  - Plantilla de Control y Amortizacion de Prestamos (1).xlsx
+  - prototipo para wdev.xlsx
+  - Nuevo documento de texto.txt   (requisitos funcionales originales)
+
+
+3. STACK TECNOLOGICO (versiones reales instaladas)
+--------------------------------------------------------------------------------
+Node.js        24.19.0
+npm            11.17.0
+Next.js        16.3.8   (App Router, React 19.2.8, Tailwind 4)
+TypeScript     5.x
+Prisma         7.10.0   (cliente en src/generated/prisma, adapter @prisma/adapter-pg)
+Vitest         5.0.3    (56 pruebas)
+Librerias      decimal.js, zod, bcryptjs, jose, date-fns, lucide-react, clsx,
+               tailwind-merge, server-only
+
+Nota: la app es un unico proyecto Next.js. No es monorepo, no usa NestJS.
+
+
+4. ESTADO DE LA BASE DE DATOS (IMPORTANTE)
+--------------------------------------------------------------------------------
+Hay DOS PostgreSQL en esta maquina y esto confunde. Leer con atencion.
+
+  A) PostgreSQL 18 nativo de Windows (instalado con winget)
+     Servicio:    postgresql-x64-18  (esta corriendo)
+     Puerto:      5432
+     Estado:      NO ACCESIBLE. La contrasena del usuario "postgres" no es
+                  conocida. Prisma devuelve P1000 "Authentication failed".
+     El instalador IGNORO el parametro --override, asi que la contrasena que se
+     intento forzar NO sirve.
+     ACCION PENDIENTE DEL USUARIO: recuperar la contrasena que se digito durante
+     la instalacion, o restablecerla. Sin esto el servicio de Windows queda
+     inutilizable para la app.
+
+  B) Cluster local de desarrollo (creado para no bloquear el trabajo)
+     Ruta:        C:\Users\Wilfrank\Documents\OpenCode\Inversiones W\app\.pgdata
+     Puerto:      5433
+     Estado:      FUNCIONANDO, es el que usa la app ahora mismo
+     Contrasena:  9f1590aeda044112bc0e
+     Es SOLO para desarrollo. Esta en .gitignore.
+
+  Migrar de B a A cuando se recupere la contrasena:
+     1) Editar DATABASE_URL en app\.env y poner el puerto 5432
+     2) cd app
+     3) npx prisma migrate deploy
+     4) npx prisma db seed
+
+
+5. COMO LEVANTAR EL CLUSTER LOCAL DE DESARROLLO (B)
+--------------------------------------------------------------------------------
+IMPORTANTE: PostgreSQL en Windows falla al crear conexiones si no esta en el
+PATH. Por eso NO se debe arrancar con pg_ctl a secas: da error 0xC0000142 y se
+cae. La forma que funciona es ejecutar postgres.exe con el PATH preparado.
+
+  $d = (Resolve-Path .pgdata).Path
+  $env:PATH = "C:\Program Files\PostgreSQL\18\bin;$env:PATH"
+  Start-Process -FilePath "C:\Program Files\PostgreSQL\18\bin\postgres.exe" `
+                -ArgumentList '-D',"`"$d`"",'-p','5433' `
+                -WorkingDirectory "C:\Program Files\PostgreSQL\18\bin" `
+                -WindowStyle Hidden
+
+  Verificar:  & "C:\Program Files\PostgreSQL\18\bin\pg_isready.exe" -h 127.0.0.1 -p 5433
+
+  Detener:    & "C:\Program Files\PostgreSQL\18\bin\pg_ctl.exe" -D "$d" -m fast stop
+
+  Conectarse a mano:
+  $env:PGPASSWORD="9f1590aeda044112bc0e"
+  & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -h 127.0.0.1 -p 5433 -U postgres -d inversiones_w
+
+  Ajustes aplicados en .pgdata\postgresql.conf para que fuera del servicio de
+  Windows funcione: max_connections=20, shared_buffers=64MB, max_worker_processes=4,
+  max_parallel_workers=0, autovacuum=off, dynamic_shared_memory_type=windows
+
+
+6. DOCKER
+--------------------------------------------------------------------------------
+Docker Desktop 4.93.0 esta instalado en:
+  C:\Program Files\Docker\Docker\resources\bin\docker.exe
+
+PERO NO FUNCIONA. El motor Linux no arranca porque WSL2 no esta instalado ni
+habilitado (wsl.exe --status devuelve codigo 50) y hace falta reiniciar Windows
+con permisos de administrador. El usuario actual NO es administrador.
+
+Para poder usar Docker:
+  1) Abrir PowerShell COMO ADMINISTRADOR
+  2) wsl --install
+  3) Reiniciar Windows
+  4) Verificar con: docker version
+
+Mientras tanto se usa el cluster local del punto 5.
+
+
+7. ACCESO A LA APLICACION
+--------------------------------------------------------------------------------
+Servidor de desarrollo: http://localhost:3000
+
+Usuario:      admin@inversionesw.co
+Contrasena:   kky23cr1O7Qe   (temporal, generada por el seed: cambiarla)
+
+Como arrancar el servidor:
+  cd "C:\Users\Wilfrank\Documents\OpenCode\Inversiones W\app"
+  npm run dev
+
+El seed es idempotente: se puede volver a ejecutar sin duplicar nada. Si se
+pierde la contrasena, se puede fijar una nueva con variables de entorno:
+  SEED_ADMIN_EMAIL=... SEED_ADMIN_PASSWORD=... npx prisma db seed
+
+
+8. REGLAS DEL MOTOR FINANCIERO (decisiones de negocio ya resueltas)
+--------------------------------------------------------------------------------
+Metodo 1 - ORIGINAL_CAPITAL (interes simple / lineal)
+  Capital por cuota = capital / plazo
+  Interes por cuota = capital por cuota * tasa
+  Cuota constante = capital por cuota + interes por cuota
+  Ejemplo verificado: 10.000.000 al 1,25% a 12 meses = cuota 843.750,
+  interes total 125.000.
+
+Metodo 2 - OUTSTANDING_BALANCE (anualidad / saldo insoluto)
+  Cuota fija = PMT(tasa, plazo, capital)
+  El interes de cada cuota se calcula sobre el saldo de esa cuota, no sobre el
+  capital original.
+  Ejemplo verificado: 5.000.000 al 2% a 12 meses = cuota 472.797,98,
+  interes total 673.575,80, total a pagar 5.673.575,80.
+
+Correcciones aplicadas respecto a los Excel:
+  - La ultima cuota absorbe el residual para que el saldo cierre en cero. Las
+    plantillas dejaban la fila final fuera de los rangos de totales.
+  - La tasa SIEMPRE se guarda como fraccion: 0.02 = 2%. El usuario digita 2, no
+    0.02. El prototipo Excel usaba 1.25 como si fuera 1.25%, lo cual es un error
+    de unidad; en la app la tasa es 1,25% = 0.0125.
+  - Precision Decimal.js: 28 digitos internamente, 2 decimales para dinero,
+    ROUND_HALF_UP. Nunca se usa aritmetica de punto flotante para dinero.
+  - Fechas siempre ISO (AAAA-MM-DD), nunca seriales de Excel.
+
+Imputacion de un pago, en este orden y de la cuota mas antigua a la mas nueva:
+  1) MORA
+  2) INTERES
+  3) CAPITAL
+Si el pago sobra, ese sobrante queda como "sin aplicar" y NO se imputa a nada.
+OJO: ese sobrante todavia no se guarda como abono extra y el prestamo no se
+marca PAGADO automaticamente. Ver pendiente en la seccion 12.
+
+Mora:
+  mora = saldo * (tasaDiaria% / 100) * diasVencidos
+  Respeta dias de gracia y el tope opcional como porcentaje del saldo.
+  Se puede aplicar sobre el saldo de capital o sobre el saldo total.
+
+Regla de oro: el capital recuperado NO es utilidad. Solo el interes y la mora
+son ingreso. El libro mayor separa las tres cosas para que los reportes no
+confundan.
+
+
+9. ESTRUCTURA DE ARCHIVOS
+--------------------------------------------------------------------------------
+app/
+  prisma/
+    schema.prisma              12 modelos, enums de rol/estado/direccion
+    seed.ts                    datos iniciales idempotentes
+    migrations/                migracion init ya aplicada
+  prisma.config.ts             Prisma 7: aqui va la URL de la BD
+  src/
+    domain/                    MOTOR FINANCIERO PURO, sin base de datos
+      types.ts                 frecuencias, metodos, estados, tipos
+      money.ts                 Decimal.js, redondeos, PMT
+      dates.ts                 ISO, suma de periodos, conversion de plazo a cuotas
+      amortization.ts          generateSchedule, mora, abonos extra
+      payments.ts              snapshots, imputacion, resumen de cartera
+    lib/
+      prisma.ts                cliente Prisma 7 con adapter pg
+    server/
+      auth.ts                  sesiones en BD + RBAC (ADMIN/ASESOR/LECTURA)
+      loans.ts                 crear prestamo, registrar pago, vencimientos
+      actions.ts               Server Actions de la UI
+      queries.ts               consultas de dashboard y listados
+      api.ts                   utilidades para Route Handlers (401/403)
+    components/                formularios y piezas de UI
+    app/
+      login/                   inicio de sesion
+      dashboard/               indicadores y cartera
+      clients/                 lista, nuevo, detalle
+      loans/                   lista, nuevo, detalle con cronograma
+      rates/                   catalogo de tasas (lo administra el usuario)
+      reports/                 rentabilidad por mes, capital vs interes
+      api/                     Route Handlers REST
+  tests/
+    amortization.test.ts       30 pruebas
+    payments.test.ts           26 pruebas
+
+
+10. API DISPONIBLE
+--------------------------------------------------------------------------------
+Todas requieren sesion. Sin cookie devuelven 401; sin permiso, 403.
+
+  GET    /api/clients
+  POST   /api/clients                  crea cliente
+  GET    /api/clients/[id]
+  GET    /api/loans                    ?status=&clientId=
+  POST   /api/loans                    crea prestamo y materializa cronograma
+  GET    /api/loans/[id]               detalle con cronograma y saldo
+  GET    /api/loans/[id]/payments
+  POST   /api/loans/[id]/payments      registra pago e imputa
+  GET    /api/rates
+  POST   /api/rates
+  POST   /api/schedule/preview         simula un cronograma sin guardar nada
+
+
+11. VERIFICACIONES YA HECHAS (resultados, no promesas)
+--------------------------------------------------------------------------------
+  npx vitest run        5 archivos, 88 pruebas, todas pasan (100%)
+  npx tsc --noEmit      sin errores (0)
+  npm run build         compila con Turbopack (Next.js 16.3.8), 16 rutas generadas
+  npx prisma validate   esquema valido
+  Migraciones           20261003000000_init + 20261004001038_abonos_capital
+  Seed                  1 admin (Admin.123), 3 tasas, 2 clientes, 2 prestamos, 24 cuotas
+
+Pruebas de flujo completo:
+  - Formulario de prestamo /loans/new con doble modo de calculo en vivo:
+      * Modo 1 (Directo): Ingresa capital prestado -> Calcula cuota y total.
+      * Modo 2 (Inverso Prototipo WDEV): Ingresa cuota deseada y plazo -> Calcula capital a prestar.
+        Formula cuantitativa exacta: G = (M * I) / (1 + J), validada con filas 2 y 3 del Excel.
+  - firstDueDate manual respetado en cuota 1 y frecuencias posteriores.
+  - Abono directo a capital y absorcion de excedentes como ABONO_EXTRA.
+  - Recalculo y persistencia de cronograma en loan_installments (REDUCIR_CUOTA / REDUCIR_PLAZO).
+  - Desglose financiero en tiempo real al registrar pago (previewAllocationBreakdown):
+      * Visualizacion en vivo de cuanto va a Interes (Ganancia Real) vs Capital (Recuperacion).
+      * Desglose de mora vencida y excedente a abono extra a capital con barra de porcentajes.
+  - Control y consolidacion por cliente / paciente:
+      * Vista detalle (/clients/[id]): Capital prestado historico, capital recuperado, capital pendiente, intereses ganados (utilidad real) y ganancia total con mora.
+      * Vista lista (/clients): Tarjetas KPI consolidadas + columnas de Capital Prestado, Capital Recuperado, Capital Pendiente e Intereses Ganados por cada cliente.
+  - Eliminación segura de clientes (deleteClientAction y DELETE /api/clients/[id]):
+      * Soporta clientes sin préstamos y clientes con préstamos (eliminación atómica en cascada de pagos, cuotas y préstamos).
+      * Modal de confirmación interactivo en el detalle (/clients/[id]) y botón de acción directa en la lista (/clients).
+  - Marcado automatico a PAGADO cuando el saldo llega a cero.
+  - Dashboard con separacion contable estricta (Capital Recuperado vs Utilidad) y control mensual.
+
+
+12. HISTORIAL DE PENDIENTES RESUELTOS
+--------------------------------------------------------------------------------
+  [RESUELTO] Eliminación de clientes implementada con modal de confirmación y borrado atómico en cascada.
+  [RESUELTO] Metodo inverso del prototipo WDEV (solvePrincipalFromPayment) implementado y probado.
+  [RESUELTO] Formulario /loans/new con toggle de calculo por Capital o por Cuota deseada.
+  [RESUELTO] Desglose en vivo en PaymentForm: ver al momento del cobro cuanto va a interes y cuanto a capital.
+  [RESUELTO] Saber por cliente / paciente cuanto se ha recaudado en capital y cuanto se ha ganado en intereses (en /clients y /clients/[id]).
+  [RESUELTO] createLoan y generateSchedule ahora respetan estrictamente firstDueDate.
+  [RESUELTO] registerPayment soporta abonos directos a capital y excedentes de cuota
+             mediante tipo ABONO_EXTRA y reprogramacion automatica.
+  [RESUELTO] El cronograma reprogramado se persiste en base de datos (loan_installments)
+             recalculando valores y anulando cuotas sobrantes en reduccion de plazo.
+  [RESUELTO] Marcado automatico del prestamo a PAGADO al cancelar la deuda restante.
+  [RESUELTO] getDashboard calcula mora real devengada por cuota segun dias de atraso.
+  [RESUELTO] Dashboard mensual con selector de mes, barra de cumplimiento y separacion
+             contable de capital recuperado (flujo) vs utilidad real (interes + mora).
+  [RESUELTO] Detalle de cliente (/clients/[id]) con tarjetas consolidadas de deuda.
+  [RESUELTO] Contrasena del usuario administrador establecida en "Admin.123" (tolerante a minusculas).
+
+
+13. PENDIENTES Y PROXIMOS PASOS
+--------------------------------------------------------------------------------
+  [BLOQUEADO] Contrasena del PostgreSQL nativo (puerto 5432). Requiere que el
+              usuario la recupere. Mientras tanto, el cluster 5433 opera al 100%.
+  [PENDIENTE] WSL2 + reinicio con administrador para poder usar Docker.
+  [PENDIENTE] Revisar si se mantienen los 3 roles o si todo queda solo ADMIN.
+  [PENDIENTE] npm audit reporta vulnerabilidades del scaffold inicial de Next.js.
+  [FUTURO]    Importar los Excel en vez de digitarlos.
+  [FUTURO]    Reportes avanzados descargables en Excel/PDF, cobranza, WhatsApp,
+              auditoria completa y exportacion contable.
+  [LEGAL]     Antes de produccion: tasa de usura en Colombia, proteccion de datos
+              personales (Habeas Data Ley 1581), contabilidad y respaldo.
+
+
+14. REGLAS DE TRABAJO
+--------------------------------------------------------------------------------
+  - No modificar los .xlsx ni el .txt de requisitos originales.
+  - La logica financiera SIEMPRE en src/domain, nunca dentro de un componente
+    de React ni de un route handler.
+  - Si se toca el motor financiero, correr npx vitest run y confirmar 80/80.
+  - Antes de dar por terminado cualquier cambio:
+      npx tsc --noEmit ; npm run lint ; npx vitest run ; npm run build
+  - Este archivo se actualiza al terminar cada bloque de trabajo.
+  - Nunca commitear .env ni .pgdata.
+
+
+================================================================================
+FIN DEL DOCUMENTO
+================================================================================
