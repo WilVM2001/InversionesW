@@ -1,0 +1,317 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Identidad y acceso. Herramienta interna: los clientes finales nunca
+// tienen usuario ni pueden iniciar sesión.
+// ---------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  ASESOR
+  LECTURA
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String
+  role         Role      @default(LECTURA)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  sessions     Session[]
+  auditLogs    AuditLog[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+// ---------------------------------------------------------------------------
+// Clientes. Persona natural. Un documento identifica a una persona.
+// ---------------------------------------------------------------------------
+
+model Client {
+  id             String   @id @default(cuid())
+  documentId     String   @unique
+  firstName      String
+  lastName       String
+  phone          String?
+  email          String?
+  address        String?
+  occupation     String?
+  birthDate      DateTime? @db.Date
+  notes          String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  loans          Loan[]
+
+  @@index([lastName, firstName])
+  @@map("clients")
+}
+
+// ---------------------------------------------------------------------------
+// Catálogo de tasas. Lo administra el usuario; los préstamos copian sus
+// condiciones al crearse para que un cambio posterior no altere la historia.
+// ---------------------------------------------------------------------------
+
+model RateProfile {
+  id                    String   @id @default(cuid())
+  name                  String   @unique
+  description           String?
+  // Tasa por período expresada como fracción: 0.02 = 2%.
+  rate                  Decimal  @db.Decimal(12, 8)
+  frequency             String
+  interestType          String
+  amortizationMethod    String
+  // Reglas de mora, copiadas también al préstamo.
+  moraDailyRatePercent  Decimal  @default(0) @db.Decimal(8, 4)
+  moraGraceDays         Int      @default(0)
+  moraCapPercentOfBalance Decimal? @db.Decimal(8, 4)
+  moraOnTotalBalance    Boolean  @default(false)
+  extraPaymentStrategy  String   @default("REDUCIR_CUOTA")
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  loans                 Loan[]
+
+  @@map("rate_profiles")
+}
+
+// ---------------------------------------------------------------------------
+// Préstamos. El snapshot de condiciones está en los campos *Snapshot.
+// ---------------------------------------------------------------------------
+
+enum LoanStatus {
+  VIGENTE
+  PAGADO
+  REESTRUCTURADO
+  CASTIGADO
+}
+
+model Loan {
+  id              String     @id @default(cuid())
+  code            String     @unique
+  clientId        String
+  client          Client     @relation(fields: [clientId], references: [id])
+  rateProfileId   String?
+  rateProfile     RateProfile? @relation(fields: [rateProfileId], references: [id])
+  status          LoanStatus @default(VIGENTE)
+
+  // Condiciones copiadas del catálogo de tasas en el momento del desembolso.
+  rateSnapshot          Decimal @db.Decimal(12, 8)
+  frequencySnapshot     String
+  interestTypeSnapshot  String
+  methodSnapshot        String
+  moraDailyRateSnapshot Decimal  @default(0) @db.Decimal(8, 4)
+  moraGraceDaysSnapshot Int      @default(0)
+  moraCapPercentSnapshot Decimal? @db.Decimal(8, 4)
+  moraOnTotalSnapshot   Boolean  @default(false)
+  extraStrategySnapshot String   @default("REDUCIR_CUOTA")
+
+  principal        Decimal   @db.Decimal(18, 4)
+  termPeriods      Int
+  disbursementDate DateTime  @db.Date
+  firstDueDate     DateTime? @db.Date
+  notes            String?
+
+  paidOffAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  installments LoanInstallment[]
+  payments     Payment[]
+  events       LoanEvent[]
+  ledger       LedgerEntry[]
+
+  @@index([status])
+  @@index([clientId])
+  @@index([disbursementDate])
+  @@map("loans")
+}
+
+// ---------------------------------------------------------------------------
+// Cronograma. Se materializa al crear el préstamo y se conserva como
+// evidencia; los pagos se imputan contra estas filas.
+// ---------------------------------------------------------------------------
+
+enum InstallmentStatus {
+  PENDIENTE
+  PARCIAL
+  PAGADA
+  VENCIDA
+  ANULADA
+}
+
+model LoanInstallment {
+  id        String @id @default(cuid())
+  loanId    String
+  loan      Loan   @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  period    Int
+
+  dueDate           DateTime @db.Date
+  openingBalance    Decimal  @db.Decimal(18, 4)
+  scheduledPayment  Decimal  @db.Decimal(18, 4)
+  interest          Decimal  @db.Decimal(18, 4)
+  principal         Decimal  @db.Decimal(18, 4)
+  extraPrincipal    Decimal  @default(0) @db.Decimal(18, 4)
+  accruedMora       Decimal  @default(0) @db.Decimal(18, 4)
+  closingBalance    Decimal  @db.Decimal(18, 4)
+
+  // Importes ya pagados, derivados de PaymentAllocation.
+  paidInterest Decimal @default(0) @db.Decimal(18, 4)
+  paidPrincipal Decimal @default(0) @db.Decimal(18, 4)
+  paidMora     Decimal @default(0) @db.Decimal(18, 4)
+  paidAt       DateTime?
+  status       InstallmentStatus @default(PENDIENTE)
+
+  allocations PaymentAllocation[]
+
+  @@unique([loanId, period])
+  @@index([loanId, status])
+  @@index([dueDate])
+  @@map("loan_installments")
+}
+
+// ---------------------------------------------------------------------------
+// Pagos e imputación.
+// ---------------------------------------------------------------------------
+
+model Payment {
+  id        String   @id @default(cuid())
+  receiptNo String   @unique
+  loanId    String
+  loan      Loan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  paidAt    DateTime @db.Date
+  amount    Decimal  @db.Decimal(18, 4)
+  method    String
+  kind      String   @default("CUOTA")
+  reference String?
+  notes     String?
+  createdAt DateTime @default(now())
+
+  allocations PaymentAllocation[]
+  ledger      LedgerEntry[]
+
+  @@index([loanId, paidAt])
+  @@map("payments")
+}
+
+enum AllocationType {
+  MORA
+  INTERES
+  CAPITAL
+  ABONO_EXTRA
+}
+
+model PaymentAllocation {
+  id          String         @id @default(cuid())
+  paymentId   String
+  payment     Payment        @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  installmentId String?
+  installment LoanInstallment? @relation(fields: [installmentId], references: [id])
+  period      Int
+  type        AllocationType
+  amount      Decimal        @db.Decimal(18, 4)
+  createdAt   DateTime       @default(now())
+
+  @@index([paymentId])
+  @@index([installmentId])
+  @@map("payment_allocations")
+}
+
+// ---------------------------------------------------------------------------
+// Eventos del préstamo y libro mayor.
+// ---------------------------------------------------------------------------
+
+enum LoanEventType {
+  DESEMBOLSO
+  ABONO_EXTRA
+  REESTRUCTURA
+  CASTIGO
+  ANULACION
+  AJUSTE
+}
+
+model LoanEvent {
+  id        String        @id @default(cuid())
+  loanId    String
+  loan      Loan          @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  type      LoanEventType
+  amount    Decimal?      @db.Decimal(18, 4)
+  notes     String?
+  payload   Json?
+  createdAt DateTime      @default(now())
+
+  @@index([loanId, createdAt])
+  @@map("loan_events")
+}
+
+// Libro mayor: separa capital, interés y mora para los reportes.
+enum LedgerDirection {
+  INGRESO
+  EGRESO
+}
+
+enum LedgerCategory {
+  CAPITAL
+  INTERES
+  MORA
+  OTROS
+}
+
+model LedgerEntry {
+  id        String          @id @default(cuid())
+  loanId    String
+  loan      Loan            @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  paymentId String?
+  payment   Payment?        @relation(fields: [paymentId], references: [id])
+  category  LedgerCategory
+  direction LedgerDirection
+  amount    Decimal         @db.Decimal(18, 4)
+  entryDate DateTime        @db.Date
+  notes     String?
+  createdAt DateTime        @default(now())
+
+  @@index([loanId, category])
+  @@index([entryDate])
+  @@map("ledger_entries")
+}
+
+// ---------------------------------------------------------------------------
+// Auditoría.
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
