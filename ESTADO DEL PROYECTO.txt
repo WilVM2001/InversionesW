@@ -1,7 +1,7 @@
 ================================================================================
 INVERSIONES W - ESTADO DEL PROYECTO
 Contexto fresco para continuar en cualquier momento.
-Ultima actualizacion: 2026-10-03
+Ultima actualizacion: 2026-10-08
 ================================================================================
 
 1. QUE SE ESTA CONSTRUYENDO
@@ -24,8 +24,13 @@ Carpeta raiz:  C:\Users\Wilfrank\Documents\OpenCode\Inversiones W
 Codigo:        C:\Users\Wilfrank\Documents\OpenCode\Inversiones W\app
 
 Este documento vive en:  app\ESTADO DEL PROYECTO.txt
-Repositorio Git:          https://github.com/WilVM2001/InversionesW
-Rama:                     master (el repo Git es la carpeta app, NO la raiz)
+Repositorio Git:          https://github.com/WilVM2001/InversionesW  (PRIVADO)
+Rama por defecto:         master  (el repo Git es la carpeta app, NO la raiz)
+Estado:                   95 archivos, todo sincronizado con origin/master.
+                          Auth local: WilVM2001 <Wilfrank.3000@gmail.com>
+Nota: existe una rama "main" heredada que solo contiene un README
+      autogenerado. No tiene codigo real. Se cambio la rama por defecto a
+      master para que el codigo sea lo primero que se vea en GitHub.
 
 Archivos originales de referencia (estan fuera del repo, NO modificar):
   - Plantilla de Control y Amortizacion de Prestamos (1).xlsx
