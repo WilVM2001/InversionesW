@@ -58,7 +58,7 @@ export function LoginForm() {
             autoComplete="current-password"
             required
             className="field pr-10"
-            placeholder="Admin.123"
+            placeholder="Tu contraseña"
           />
           <button
             type="button"

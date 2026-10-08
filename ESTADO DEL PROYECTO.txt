@@ -71,7 +71,7 @@ Hay DOS PostgreSQL en esta maquina y esto confunde. Leer con atencion.
      Ruta:        C:\Users\Wilfrank\Documents\OpenCode\Inversiones W\app\.pgdata
      Puerto:      5433
      Estado:      FUNCIONANDO, es el que usa la app ahora mismo
-     Contrasena:  9f1590aeda044112bc0e
+     Contrasena:  NO se escribe aqui. Esta en app\.env (campo DATABASE_URL).
      Es SOLO para desarrollo. Esta en .gitignore.
 
   Migrar de B a A cuando se recupere la contrasena:
@@ -98,8 +98,8 @@ cae. La forma que funciona es ejecutar postgres.exe con el PATH preparado.
 
   Detener:    & "C:\Program Files\PostgreSQL\18\bin\pg_ctl.exe" -D "$d" -m fast stop
 
-  Conectarse a mano:
-  $env:PGPASSWORD="9f1590aeda044112bc0e"
+  Conectarse a mano (la contrasena se toma de app\.env, NO se escribe aqui):
+  $env:PGPASSWORD = (Get-Content .env | Select-String 'DATABASE_URL').Line
   & "C:\Program Files\PostgreSQL\18\bin\psql.exe" -h 127.0.0.1 -p 5433 -U postgres -d inversiones_w
 
   Ajustes aplicados en .pgdata\postgresql.conf para que fuera del servicio de
@@ -130,7 +130,7 @@ Mientras tanto se usa el cluster local del punto 5.
 Servidor de desarrollo: http://localhost:3000
 
 Usuario:      admin@inversionesw.co
-Contrasena:   kky23cr1O7Qe   (temporal, generada por el seed: cambiarla)
+Contrasena:   NO se escribe aqui. Se define con SEED_ADMIN_PASSWORD al sembrar.
 
 Como arrancar el servidor:
   cd "C:\Users\Wilfrank\Documents\OpenCode\Inversiones W\app"
@@ -246,7 +246,7 @@ Todas requieren sesion. Sin cookie devuelven 401; sin permiso, 403.
   npm run build         compila con Turbopack (Next.js 16.3.8), 16 rutas generadas
   npx prisma validate   esquema valido
   Migraciones           20261003000000_init + 20261004001038_abonos_capital
-  Seed                  1 admin (Admin.123), 3 tasas, 2 clientes, 2 prestamos, 24 cuotas
+  Seed                  1 admin, 3 tasas, 2 clientes, 2 prestamos, 24 cuotas
 
 Pruebas de flujo completo:
   - Formulario de prestamo /loans/new con doble modo de calculo en vivo:
@@ -286,7 +286,8 @@ Pruebas de flujo completo:
   [RESUELTO] Dashboard mensual con selector de mes, barra de cumplimiento y separacion
              contable de capital recuperado (flujo) vs utilidad real (interes + mora).
   [RESUELTO] Detalle de cliente (/clients/[id]) con tarjetas consolidadas de deuda.
-  [RESUELTO] Contrasena del usuario administrador establecida en "Admin.123" (tolerante a minusculas).
+  [RESUELTO] Contrasena del usuario administrador configurable por variable de
+             entorno SEED_ADMIN_PASSWORD (ya NO se escribe en el repositorio).
 
 
 13. PENDIENTES Y PROXIMOS PASOS

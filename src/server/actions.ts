@@ -47,12 +47,7 @@ export async function loginAction(_prev: FormState, form: FormData): Promise<For
 
   const user = await prisma.user.findUnique({ where: { email } });
   const { compare } = await import("bcryptjs");
-  let valid = user ? await compare(password, user.passwordHash) : false;
-
-  // Soporta tanto Admin.123 como admin.123 para evitar bloqueos por mayúsculas
-  if (!valid && user && password.toLowerCase() === "admin.123") {
-    valid = await compare("Admin.123", user.passwordHash);
-  }
+  const valid = user ? await compare(password, user.passwordHash) : false;
 
   if (!user || !valid || !user.isActive) {
     return { error: "Credenciales incorrectas." };

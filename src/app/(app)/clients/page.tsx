@@ -4,7 +4,6 @@ import { listClients } from "@/server/queries";
 import { formatCOPWhole } from "@/components/format";
 import { EmptyState, StatCard } from "@/components/ui";
 import { DeleteClientButton } from "@/components/delete-client-button";
-import { Users, TrendingUp, DollarSign } from "lucide-react";
 
 export default async function ClientsPage({
   searchParams,
@@ -14,12 +13,6 @@ export default async function ClientsPage({
   const user = await requirePermission("clients:read");
   const { q } = await searchParams;
   const clients = await listClients(q);
-
-  // Totales consolidados de toda la cartera de clientes
-  let globalDelivered = 0;
-  let globalRecovered = 0;
-  let globalPending = 0;
-  let globalInterestEarned = 0;
 
   const clientMetrics = clients.map((c) => {
     const delivered = c.loans.reduce((a, l) => a + Number(l.principal), 0);
@@ -45,11 +38,6 @@ export default async function ClientsPage({
       0,
     );
 
-    globalDelivered += delivered;
-    globalRecovered += recovered;
-    globalPending += pending;
-    globalInterestEarned += interestEarned;
-
     return {
       client: c,
       delivered,
@@ -60,6 +48,12 @@ export default async function ClientsPage({
       totalProfit: interestEarned + moraEarned,
     };
   });
+
+  // Totales consolidados de toda la cartera de clientes
+  const globalDelivered = clientMetrics.reduce((a, m) => a + m.delivered, 0);
+  const globalRecovered = clientMetrics.reduce((a, m) => a + m.recovered, 0);
+  const globalPending = clientMetrics.reduce((a, m) => a + m.pending, 0);
+  const globalInterestEarned = clientMetrics.reduce((a, m) => a + m.interestEarned, 0);
 
   return (
     <div className="space-y-6">

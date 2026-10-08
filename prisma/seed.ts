@@ -9,6 +9,7 @@
  * SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD para no fijarlas en el repositorio.
  */
 import "dotenv/config";
+import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
@@ -24,7 +25,13 @@ const adapter = new PrismaPg({
 const prisma = new PrismaClient({ adapter });
 
 const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL ?? "admin@inversionesw.co";
-const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? "Admin.123";
+/**
+ * Nunca se fija una contrasena real en el repositorio. Si no viene por
+ * variable de entorno se genera una temporal al azar y se imprime una sola
+ * vez en la consola del seed.
+ */
+const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD ?? randomBytes(12).toString("base64url");
+const ADMIN_PASSWORD_IS_GENERATED = process.env.SEED_ADMIN_PASSWORD === undefined;
 
 interface RateSeed {
   name: string;
@@ -133,9 +140,8 @@ async function main(): Promise<void> {
       isActive: true,
     },
   });
-  const generatedPassword = process.env.SEED_ADMIN_PASSWORD === undefined;
   console.log(`  usuario admin: ${ADMIN_EMAIL}`);
-  if (generatedPassword) {
+  if (ADMIN_PASSWORD_IS_GENERATED) {
     console.log(`  contrasena temporal: ${ADMIN_PASSWORD} (cambiala al primer ingreso)`);
   }
 
