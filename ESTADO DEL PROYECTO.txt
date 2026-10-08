@@ -24,13 +24,20 @@ Carpeta raiz:  C:\Users\Wilfrank\Documents\OpenCode\Inversiones W
 Codigo:        C:\Users\Wilfrank\Documents\OpenCode\Inversiones W\app
 
 Este documento vive en:  app\ESTADO DEL PROYECTO.txt
-Repositorio Git:          https://github.com/WilVM2001/InversionesW  (PRIVADO)
+Repositorio Git:          https://github.com/WilVM2001/InversionesW  (PUBLICO)
 Rama por defecto:         master  (el repo Git es la carpeta app, NO la raiz)
-Estado:                   95 archivos, todo sincronizado con origin/master.
+Estado:                   todo sincronizado con origin/master.
                           Auth local: WilVM2001 <Wilfrank.3000@gmail.com>
 Nota: existe una rama "main" heredada que solo contiene un README
       autogenerado. No tiene codigo real. Se cambio la rama por defecto a
       master para que el codigo sea lo primero que se vea en GitHub.
+
+AVISO DE SEGURIDAD: el repositorio quedo PUBLICO. Las contrasenas del cluster
+  de desarrollo y del usuario administrador que en algun momento se escribieron
+  en este documento YA FUERON ROTADAS (cambiadas) y ahora NO son validas. Las
+  nuevas viven UNICAMENTE en app\.env, que esta en .gitignore y NUNCA se sube.
+  Recomendacion pendiente: volver el repositorio PRIVADO y/o purgar el historial
+  de Git (los commits viejos aun contienen las contrasenas rotadas, ya inutiles).
 
 Archivos originales de referencia (estan fuera del repo, NO modificar):
   - Plantilla de Control y Amortizacion de Prestamos (1).xlsx
@@ -45,7 +52,7 @@ npm            11.17.0
 Next.js        16.3.8   (App Router, React 19.2.8, Tailwind 4)
 TypeScript     5.x
 Prisma         7.10.0   (cliente en src/generated/prisma, adapter @prisma/adapter-pg)
-Vitest         5.0.3    (56 pruebas)
+Vitest         5.0.3    (88 pruebas)
 Librerias      decimal.js, zod, bcryptjs, jose, date-fns, lucide-react, clsx,
                tailwind-merge, server-only
 
@@ -288,12 +295,23 @@ Pruebas de flujo completo:
   [RESUELTO] Detalle de cliente (/clients/[id]) con tarjetas consolidadas de deuda.
   [RESUELTO] Contrasena del usuario administrador configurable por variable de
              entorno SEED_ADMIN_PASSWORD (ya NO se escribe en el repositorio).
+  [RESUELTO] SEGURIDAD: se quito una puerta trasera en loginAction que permitia
+             entrar con la contrasena fija "admin.123" sin importar la real.
+  [RESUELTO] SEGURIDAD: se quitaron contrasenas hardcodeadas del seed y del
+             formulario de login, y las contrasenas reales (cluster + admin)
+             fueron ROTADAS. Las nuevas solo viven en app\.env.
+  [RESUELTO] Bug de render en /clients: los totales se calculan con reduce (ya no
+             se mutan variables durante el render).
 
 
 13. PENDIENTES Y PROXIMOS PASOS
 --------------------------------------------------------------------------------
   [BLOQUEADO] Contrasena del PostgreSQL nativo (puerto 5432). Requiere que el
               usuario la recupere. Mientras tanto, el cluster 5433 opera al 100%.
+  [PENDIENTE] Decidir si el repositorio GitHub vuelve a ser PRIVADO. Esta publico
+              y los commits viejos aun contienen las contrasenas (ya rotadas).
+  [PENDIENTE] (Opcional) Purgar el historial de Git para borrar por completo los
+              secretos viejos; requiere force push. Solo hacerlo con permiso.
   [PENDIENTE] WSL2 + reinicio con administrador para poder usar Docker.
   [PENDIENTE] Revisar si se mantienen los 3 roles o si todo queda solo ADMIN.
   [PENDIENTE] npm audit reporta vulnerabilidades del scaffold inicial de Next.js.
