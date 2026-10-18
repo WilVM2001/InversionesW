@@ -45,20 +45,29 @@ export async function loginAction(_prev: FormState, form: FormData): Promise<For
 
   if (!email || !password) return { error: "Ingresa tu correo y contraseña." };
 
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user || !user.isActive) {
-    return { error: "Credenciales incorrectas." };
+  try {
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user || !user.isActive) {
+      return { error: "Credenciales incorrectas." };
+    }
+
+    const { compare } = await import("bcryptjs");
+    const valid = await compare(password, user.passwordHash);
+
+    if (!valid) {
+      return { error: "Credenciales incorrectas." };
+    }
+
+    const { createSession } = await import("@/server/auth");
+    await createSession(user.id);
+  } catch (err) {
+    console.error("Error en loginAction:", err);
+    return {
+      error:
+        "No se pudo conectar a la base de datos. Verifica la variable DATABASE_URL y que el servicio esté activo.",
+    };
   }
 
-  const { compare } = await import("bcryptjs");
-  const valid = await compare(password, user.passwordHash);
-
-  if (!valid) {
-    return { error: "Credenciales incorrectas." };
-  }
-
-  const { createSession } = await import("@/server/auth");
-  await createSession(user.id);
   revalidatePath("/", "layout");
   redirect("/dashboard");
 }
