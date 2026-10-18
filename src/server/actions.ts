@@ -40,16 +40,20 @@ function intField(form: FormData, key: string): number {
 // ---------------------------------------------------------------------------
 
 export async function loginAction(_prev: FormState, form: FormData): Promise<FormState> {
-  const email = str(form, "email").toLowerCase();
-  const password = str(form, "password");
+  const email = str(form, "email").trim().toLowerCase();
+  const password = str(form, "password").trim();
 
   if (!email || !password) return { error: "Ingresa tu correo y contraseña." };
 
   const user = await prisma.user.findUnique({ where: { email } });
-  const { compare } = await import("bcryptjs");
-  const valid = user ? await compare(password, user.passwordHash) : false;
+  if (!user || !user.isActive) {
+    return { error: "Credenciales incorrectas." };
+  }
 
-  if (!user || !valid || !user.isActive) {
+  const { compare } = await import("bcryptjs");
+  const valid = await compare(password, user.passwordHash);
+
+  if (!valid) {
     return { error: "Credenciales incorrectas." };
   }
 
