@@ -192,8 +192,8 @@ async function main(): Promise<void> {
   // 4. Préstamos de ejemplo con cronograma materializado.
   const today = toIso(new Date());
   const loanSeeds = [
-    { code: "P-0001", documentId: CLIENTS[0].documentId, rateIndex: 0, principal: 5_000_000, termPeriods: 12 },
-    { code: "P-0002", documentId: CLIENTS[1].documentId, rateIndex: 1, principal: 10_000_000, termPeriods: 12 },
+    { code: "P-00001", documentId: CLIENTS[0].documentId, rateIndex: 0, principal: 5_000_000, termPeriods: 12 },
+    { code: "P-00002", documentId: CLIENTS[1].documentId, rateIndex: 1, principal: 10_000_000, termPeriods: 12 },
   ];
 
   for (const loanSeed of loanSeeds) {

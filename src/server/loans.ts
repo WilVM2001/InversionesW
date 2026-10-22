@@ -59,34 +59,50 @@ function termsFromLoan(loan: {
 
 /** Genera el código siguiente de préstamo buscando el consecutivo más alto. */
 async function getNextLoanCode(tx: Prisma.TransactionClient): Promise<string> {
-  const lastLoan = await tx.loan.findFirst({
-    orderBy: { code: "desc" },
+  const loans = await tx.loan.findMany({
     select: { code: true },
   });
-  let nextNumber = 1;
-  if (lastLoan?.code) {
-    const match = lastLoan.code.match(/\d+/);
+  let maxNumber = 0;
+  for (const l of loans) {
+    const match = l.code.match(/\d+/);
     if (match) {
-      nextNumber = parseInt(match[0], 10) + 1;
+      const num = parseInt(match[0], 10);
+      if (!isNaN(num) && num > maxNumber) {
+        maxNumber = num;
+      }
     }
   }
-  return `P-${String(nextNumber).padStart(5, "0")}`;
+  let nextNumber = maxNumber + 1;
+  let code = `P-${String(nextNumber).padStart(5, "0")}`;
+  while (await tx.loan.findUnique({ where: { code } })) {
+    nextNumber++;
+    code = `P-${String(nextNumber).padStart(5, "0")}`;
+  }
+  return code;
 }
 
 /** Genera el recibo siguiente de pago buscando el consecutivo más alto. */
 async function getNextReceiptNo(tx: Prisma.TransactionClient): Promise<string> {
-  const lastPayment = await tx.payment.findFirst({
-    orderBy: { receiptNo: "desc" },
+  const payments = await tx.payment.findMany({
     select: { receiptNo: true },
   });
-  let nextNumber = 1;
-  if (lastPayment?.receiptNo) {
-    const match = lastPayment.receiptNo.match(/\d+/);
+  let maxNumber = 0;
+  for (const p of payments) {
+    const match = p.receiptNo.match(/\d+/);
     if (match) {
-      nextNumber = parseInt(match[0], 10) + 1;
+      const num = parseInt(match[0], 10);
+      if (!isNaN(num) && num > maxNumber) {
+        maxNumber = num;
+      }
     }
   }
-  return `R-${String(nextNumber).padStart(6, "0")}`;
+  let nextNumber = maxNumber + 1;
+  let receiptNo = `R-${String(nextNumber).padStart(6, "0")}`;
+  while (await tx.payment.findUnique({ where: { receiptNo } })) {
+    nextNumber++;
+    receiptNo = `R-${String(nextNumber).padStart(6, "0")}`;
+  }
+  return receiptNo;
 }
 
 /**
