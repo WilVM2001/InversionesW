@@ -113,7 +113,8 @@ export function RateForm() {
           >
             <option value="OUTSTANDING_BALANCE">Sobre saldo insoluto</option>
             <option value="ORIGINAL_CAPITAL">Sobre capital original</option>
-            <option value="BULLET">Bullet (Intereses periódicos + capital al final)</option>
+            <option value="BULLET">Interés Puro / Bullet (Cuota solo interés, capital al final)</option>
+            <option value="INTEREST_ONLY">Interés Puro (Sin amortización intermedia)</option>
           </select>
         </div>
         <div>

@@ -1,4 +1,5 @@
 import { addPeriods, daysBetween, toDate, toIso } from "./dates";
+import Decimal from "decimal.js";
 import {
   annuityPayment,
   dec,
@@ -31,11 +32,15 @@ export function computeMora(
   return mora.toNumber();
 }
 
-/** Mora de una cuota a una fecha de corte, considerando el saldo real. */
+/** Mora de una cuota a una fecha de corte, considerando el saldo real o el interés impago en cuotas de interés puro. */
 export function moraAsOf(row: ScheduleRow, rule: MoraRule, asOf: Date): number {
   const daysOverdue = daysBetween(toDate(row.dueDate), asOf);
   if (daysOverdue <= 0) return 0;
-  const base = rule.onTotalBalance ? totalDueOf(row).toNumber() : row.closingBalance;
+  const base = rule.onTotalBalance
+    ? totalDueOf(row).toNumber()
+    : row.principal > 0
+      ? row.closingBalance
+      : row.interest;
   return computeMora(base, rule, daysOverdue);
 }
 
@@ -98,7 +103,7 @@ export function buildRows(
   if (principal <= 0) throw new Error("El capital del préstamo debe ser mayor que cero.");
   if (term <= 0) throw new Error("El plazo del préstamo debe ser mayor que cero.");
 
-  if (method === "BULLET") {
+  if (method === "BULLET" || method === "INTEREST_ONLY") {
     const rows: ScheduleRow[] = [];
     const decPrincipal = dec(principal);
     const monthlyInterest = internal(decPrincipal.times(rate));
@@ -184,6 +189,56 @@ export function generateSchedule(terms: LoanTerms): ScheduleRow[] {
   validateTerms(terms);
   const dueDates = Array.from({ length: terms.termPeriods }, (_, i) => dueDateFor(terms, i + 1));
   return buildRows(terms.principal, terms.rate, terms.amortizationMethod, dueDates);
+}
+
+export interface BulletInstallment {
+  installmentNumber: number;
+  dueDate: Date;
+  interestAmount: Decimal;
+  principalAmount: Decimal;
+  totalDue: Decimal;
+  remainingPrincipal: Decimal;
+}
+
+/**
+ * Genera el cronograma de un préstamo de Interés Puro (o Bullet sin amortización intermedia)
+ * utilizando Decimal.js directamente con alta precisión.
+ */
+export function generateInterestOnlySchedule(params: {
+  principal: Decimal;
+  ratePerPeriod: Decimal; // Ej: 0.02 para 2%
+  numberOfInstallments: number;
+  firstDueDate: Date;
+  addPeriodFn: (date: Date, periodIndex: number) => Date;
+}): BulletInstallment[] {
+  const { principal, ratePerPeriod, numberOfInstallments, firstDueDate, addPeriodFn } = params;
+
+  // Cuota fija de solo interés: Capital * Tasa
+  const interestPayment = principal.mul(ratePerPeriod).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+  const installments: BulletInstallment[] = [];
+
+  for (let i = 1; i <= numberOfInstallments; i++) {
+    const isLast = i === numberOfInstallments;
+    const dueDate = addPeriodFn(firstDueDate, i - 1);
+
+    // En cuotas intermedias el capital a cobrar es 0
+    // En la última cuota (si se liquida al final) se cobra el capital completo,
+    // o 0 si el crédito es indefinido/renovable por intereses.
+    const principalDue = isLast ? principal : new Decimal(0);
+    const totalDue = interestPayment.plus(principalDue);
+    const remaining = isLast ? new Decimal(0) : principal;
+
+    installments.push({
+      installmentNumber: i,
+      dueDate,
+      interestAmount: interestPayment,
+      principalAmount: principalDue,
+      totalDue,
+      remainingPrincipal: remaining,
+    });
+  }
+
+  return installments;
 }
 
 /** Totales del cronograma, útiles para tarjetas de resumen y reportes. */

@@ -56,7 +56,8 @@ export default async function LoanDetailPage({
         </div>
         <div className="flex items-center gap-3">
           <Badge className={style.className}>{style.label}</Badge>
-          {loan.methodSnapshot === "BULLET" &&
+          {(loan.methodSnapshot === "BULLET" ||
+            loan.methodSnapshot === "INTEREST_ONLY") &&
           loan.status !== "PAGADO" &&
           can(user.role, "loans:write") ? (
             <BulletRenewalModal
@@ -127,8 +128,8 @@ export default async function LoanDetailPage({
               <dd className="font-medium">
                 {loan.methodSnapshot === "ORIGINAL_CAPITAL"
                   ? "Sobre capital original"
-                  : loan.methodSnapshot === "BULLET"
-                    ? "Bullet (capital al final)"
+                  : loan.methodSnapshot === "BULLET" || loan.methodSnapshot === "INTEREST_ONLY"
+                    ? "Interés Puro / Bullet (capital al final)"
                     : "Sobre saldo insoluto (PMT)"}
               </dd>
             </div>

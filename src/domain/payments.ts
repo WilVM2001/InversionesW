@@ -45,8 +45,14 @@ export function buildSnapshots(
     const paid = paidByPeriod.get(row.period) ?? { mora: 0, interest: 0, principal: 0 };
     const daysOverdue = daysBetween(toDate(row.dueDate), asOf);
 
-    // La mora corre sobre lo que aún se debe de capital en esa cuota.
-    const moraBase = Math.max(0, row.principal - paid.principal);
+    // La mora corre sobre el capital impago de esa cuota o sobre el interés impago si es cuota de solo interés (Interés Puro/Bullet).
+    const principalOwed = Math.max(0, row.principal - paid.principal);
+    const interestOwed = Math.max(0, row.interest - paid.interest);
+    const moraBase = rule.onTotalBalance
+      ? Math.max(0, row.scheduledPayment - (paid.principal + paid.interest))
+      : principalOwed > 0
+        ? principalOwed
+        : interestOwed;
     const currentMora =
       daysOverdue > 0 ? computeMora(moraBase, rule, daysOverdue) : 0;
 

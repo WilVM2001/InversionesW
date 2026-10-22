@@ -210,7 +210,7 @@ export function LoanForm({
         principal,
         cuotaRegular: rows[0]?.scheduledPayment ?? 0,
         cuotaFinal: rows[rows.length - 1]?.scheduledPayment ?? 0,
-        isBullet: amortizationMethod === "BULLET",
+        isBullet: amortizationMethod === "BULLET" || amortizationMethod === "INTEREST_ONLY",
         totalScheduled: totals.totalScheduled,
         totalInterest: totals.totalInterest,
         nextDueDate: rows[0]?.dueDate ?? firstDueDate,
@@ -428,7 +428,7 @@ export function LoanForm({
               setInterestType("SIMPLE");
             }}
             className={`rounded-xl border p-4 text-left transition relative cursor-pointer ${
-              amortizationMethod === "BULLET"
+              amortizationMethod === "BULLET" || amortizationMethod === "INTEREST_ONLY"
                 ? "border-brand-600 bg-brand-50/50 ring-2 ring-brand-500"
                 : inputMode === "BY_TARGET_PAYMENT"
                   ? "opacity-50 border-ink-200 bg-ink-50 cursor-not-allowed"
@@ -437,19 +437,19 @@ export function LoanForm({
           >
             <div className="flex items-center justify-between">
               <span className="font-bold text-ink-900 text-sm">
-                Bullet (Capital al Final)
+                Interés Puro / Bullet (Cuota solo interés)
               </span>
-              {amortizationMethod === "BULLET" && (
+              {(amortizationMethod === "BULLET" || amortizationMethod === "INTEREST_ONLY") && (
                 <span className="rounded-full bg-brand-600 px-2.5 py-0.5 text-[10px] font-bold text-white uppercase tracking-wider">
                   Seleccionado
                 </span>
               )}
             </div>
             <p className="mt-1.5 text-xs text-ink-600">
-              Interés periódico fijo cuota a cuota y devolución del 100% del capital al vencimiento.
+              La cuota es 100% interés. El pago recurrente no descuenta capital y el saldo permanece intacto.
             </p>
             <div className="mt-2.5 rounded-md bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-900 ring-1 ring-emerald-200">
-              Cuotas 1 a n-1: 100% utilidad (interés). Cuota n: capital + interés.
+              Aporte a capital = $0. Cuotas 1 a n-1 son 100% ganancia. Capital al vencimiento o abono voluntario.
             </div>
           </button>
         </div>
@@ -638,8 +638,8 @@ export function LoanForm({
                   ? "Cálculo Inverso por Cuota Deseada"
                   : amortizationMethod === "ORIGINAL_CAPITAL"
                     ? "Tasa Fija Directa"
-                    : amortizationMethod === "BULLET"
-                      ? "Bullet / Americano: Capital al Final"
+                    : amortizationMethod === "BULLET" || amortizationMethod === "INTEREST_ONLY"
+                      ? "Interés Puro / Bullet: Cuota Solo Interés"
                       : "Saldo Insoluto PMT"}
                 )
               </p>
@@ -748,9 +748,9 @@ export function LoanForm({
               <span>
                 Capital {formatCOP(simulation.terms.principal)} + {simulation.effectiveRatePercent}% interés ({formatCOP(simulation.totals.totalInterest)}) = <strong>{formatCOP(simulation.totals.totalScheduled)} total</strong> ÷ {termPeriodsStr} cuotas = <strong className="text-brand-700">{formatCOP(simulation.cuotaRegular)} por cuota</strong>.
               </span>
-            ) : amortizationMethod === "BULLET" ? (
+            ) : amortizationMethod === "BULLET" || amortizationMethod === "INTEREST_ONLY" ? (
               <span>
-                <strong>Sistema Bullet (Americano):</strong> Cuotas 1 a {Number(termPeriodsStr) - 1 || 1} de solo interés <strong>{formatCOP(simulation.cuotaRegular)}</strong> (100% ganancia contable). En la cuota final ({termPeriodsStr}) se restituye el capital ({formatCOP(simulation.principal)}) + último interés ({formatCOP(simulation.cuotaRegular)}) = <strong className="text-brand-700">{formatCOP(simulation.cuotaFinal)}</strong>. Total recaudado: {formatCOP(simulation.totalScheduled)} (Ganancia de intereses: {formatCOP(simulation.totalInterest)}).
+                <strong>Modalidad de Interés Puro (Bullet):</strong> Cada cuota periódica ordinaria es 100% interés (<strong>{formatCOP(simulation.cuotaRegular)}</strong>). El pago recurrente <strong>no descuenta capital</strong>, manteniendo el saldo colocado intacto en {formatCOP(simulation.principal)}. Total de intereses pactados: <strong>{formatCOP(simulation.totalInterest)}</strong> ({termPeriodsStr} cuotas × {formatCOP(simulation.cuotaRegular)}). En la fecha de vencimiento final se devuelve el capital inicial de {formatCOP(simulation.principal)} más el último interés = <strong className="text-brand-700">{formatCOP(simulation.cuotaFinal)}</strong>.
               </span>
             ) : (
               <span>

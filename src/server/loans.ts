@@ -666,8 +666,8 @@ export async function renewBulletLoan(input: RenewBulletLoanInput) {
     if (loan.status === "PAGADO") {
       throw new Error("El préstamo ya se encuentra completamente pagado.");
     }
-    if (loan.methodSnapshot !== "BULLET") {
-      throw new Error("Solo los préstamos con método BULLET admiten el mecanismo de prórroga.");
+    if (loan.methodSnapshot !== "BULLET" && loan.methodSnapshot !== "INTEREST_ONLY") {
+      throw new Error("Solo los préstamos con método BULLET o INTERÉS PURO admiten el mecanismo de prórroga.");
     }
 
     const activeInstallments = loan.installments.filter((i) => i.status !== "ANULADA");

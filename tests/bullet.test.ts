@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { generateSchedule, renewBulletSchedule, scheduleTotals } from "@/domain/amortization";
+import Decimal from "decimal.js";
+import {
+  generateInterestOnlySchedule,
+  generateSchedule,
+  renewBulletSchedule,
+  scheduleTotals,
+} from "@/domain/amortization";
 import { rescheduleWithPrepayment } from "@/domain/prepayment";
-import { applyPayment, buildSnapshots } from "@/domain/payments";
+import { applyPayment, buildSnapshots, portfolioSummary } from "@/domain/payments";
+import { addMonths } from "date-fns";
 import type { LoanTerms, MoraRule } from "@/domain/types";
 
 describe("Motor Financiero - Amortización BULLET (Americano)", () => {
@@ -218,6 +225,90 @@ describe("Motor Financiero - Amortización BULLET (Americano)", () => {
     expect(renewal.newRows[2].principal).toBe(15_000_000);
     expect(renewal.newRows[2].scheduledPayment).toBe(15_300_000);
     expect(renewal.newRows[2].closingBalance).toBe(0);
+  });
+
+  it("generateInterestOnlySchedule con Decimal.js genera cuotas 100% interés y capital al final", () => {
+    const installments = generateInterestOnlySchedule({
+      principal: new Decimal(10_000_000),
+      ratePerPeriod: new Decimal(0.02),
+      numberOfInstallments: 6,
+      firstDueDate: new Date("2026-02-01"),
+      addPeriodFn: (date, index) => addMonths(date, index),
+    });
+
+    expect(installments).toHaveLength(6);
+
+    // Cuotas 1 a 5: aporte a capital 0, 100% cuota interés, saldo intacto
+    for (let i = 0; i < 5; i += 1) {
+      const inst = installments[i];
+      expect(inst.installmentNumber).toBe(i + 1);
+      expect(inst.interestAmount.toNumber()).toBe(200_000);
+      expect(inst.principalAmount.toNumber()).toBe(0);
+      expect(inst.totalDue.toNumber()).toBe(200_000);
+      expect(inst.remainingPrincipal.toNumber()).toBe(10_000_000);
+    }
+
+    // Cuota 6 (Vencimiento final)
+    const finalInst = installments[5];
+    expect(finalInst.installmentNumber).toBe(6);
+    expect(finalInst.interestAmount.toNumber()).toBe(200_000);
+    expect(finalInst.principalAmount.toNumber()).toBe(10_000_000);
+    expect(finalInst.totalDue.toNumber()).toBe(10_200_000);
+    expect(finalInst.remainingPrincipal.toNumber()).toBe(0);
+  });
+
+  it("calcula mora devengada sobre el interés impago cuando la cuota es de solo interés", () => {
+    const moraRule: MoraRule = {
+      dailyRatePercent: 1, // 1% diario
+      graceDays: 0,
+      capPercentOfBalance: null,
+      onTotalBalance: false,
+    };
+
+    const termsWithMora: LoanTerms = {
+      ...bullet12mTerms,
+      mora: moraRule,
+    };
+
+    const rows = generateSchedule(termsWithMora);
+    // Cuota 1 vence 2026-02-01. Fecha de corte: 2026-02-11 (10 días de atraso)
+    const paidByPeriod = new Map<number, { mora: number; interest: number; principal: number }>();
+    const asOf = new Date("2026-02-11T12:00:00");
+
+    const snapshots = buildSnapshots(rows, paidByPeriod, moraRule, asOf);
+    const snap1 = snapshots[0];
+
+    // En cuota 1, principal es 0 pero interés es 400.000 COP
+    expect(snap1.row.principal).toBe(0);
+    expect(snap1.row.interest).toBe(400_000);
+
+    // Mora: 400.000 * 1% * 10 días = 40.000 COP
+    expect(snap1.currentMora).toBe(40_000);
+    expect(snap1.status).toBe("VENCIDA");
+    expect(snap1.outstanding).toBe(440_000); // 400.000 interés + 40.000 mora
+  });
+
+  it("el método INTEREST_ONLY opera de forma equivalente a BULLET", () => {
+    const interestOnlyTerms: LoanTerms = {
+      ...bullet12mTerms,
+      amortizationMethod: "INTEREST_ONLY",
+    };
+
+    const rows = generateSchedule(interestOnlyTerms);
+    expect(rows).toHaveLength(12);
+    expect(rows[0].interest).toBe(400_000);
+    expect(rows[0].principal).toBe(0);
+    expect(rows[0].scheduledPayment).toBe(400_000);
+    expect(rows[11].principal).toBe(20_000_000);
+    expect(rows[11].scheduledPayment).toBe(20_400_000);
+
+    // Saldo insoluto en portfolio permanece intacto
+    const paidByPeriod = new Map<number, { mora: number; interest: number; principal: number }>();
+    paidByPeriod.set(1, { mora: 0, interest: 400_000, principal: 0 }); // pagada cuota 1
+    const snapshots = buildSnapshots(rows, paidByPeriod, defaultMora, new Date("2026-02-15"));
+    const summary = portfolioSummary(snapshots);
+
+    expect(summary.principalOutstanding).toBe(20_000_000); // Intacto
   });
 });
 

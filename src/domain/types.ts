@@ -18,6 +18,7 @@ export const AMORTIZATION_METHODS = [
   "ORIGINAL_CAPITAL",
   "OUTSTANDING_BALANCE",
   "BULLET",
+  "INTEREST_ONLY",
 ] as const;
 export type AmortizationMethod = (typeof AMORTIZATION_METHODS)[number];
 

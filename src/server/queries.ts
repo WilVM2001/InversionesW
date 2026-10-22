@@ -207,7 +207,17 @@ export async function getDashboard(monthStr?: string, daysUpcoming = 30): Promis
         onTotalBalance: inst.loan.moraOnTotalSnapshot,
       };
 
-      const moraBase = Math.max(0, Number(inst.principal) - Number(inst.paidPrincipal));
+      const principalUnpaid = Math.max(0, Number(inst.principal) - Number(inst.paidPrincipal));
+      const interestUnpaid = Math.max(0, Number(inst.interest) - Number(inst.paidInterest));
+      const moraBase = moraRule.onTotalBalance
+        ? Math.max(
+            0,
+            Number(inst.scheduledPayment) -
+              (Number(inst.paidPrincipal) + Number(inst.paidInterest)),
+          )
+        : principalUnpaid > 0
+          ? principalUnpaid
+          : interestUnpaid;
       const currentMora = daysLate > 0 ? computeMora(moraBase, moraRule, daysLate) : 0;
       const unpaidMora = Math.max(0, currentMora + Number(inst.accruedMora) - Number(inst.paidMora));
 

@@ -118,8 +118,8 @@ export default async function LoansPage({
                         {loan.termPeriods} cuota(s) ·{" "}
                         {loan.methodSnapshot === "ORIGINAL_CAPITAL"
                           ? "capital original"
-                          : loan.methodSnapshot === "BULLET"
-                            ? "bullet (capital al final)"
+                          : loan.methodSnapshot === "BULLET" || loan.methodSnapshot === "INTEREST_ONLY"
+                            ? "interés puro / bullet"
                             : "saldo insoluto"}
                       </p>
                     </td>
