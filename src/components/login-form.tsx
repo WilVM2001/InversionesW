@@ -38,7 +38,6 @@ export function LoginForm() {
           id="email"
           name="email"
           type="email"
-          defaultValue="admin@inversionesw.co"
           autoComplete="username"
           required
           className="field"
@@ -58,7 +57,6 @@ export function LoginForm() {
             autoComplete="current-password"
             required
             className="field pr-10"
-            placeholder="Tu contraseña"
           />
           <button
             type="button"

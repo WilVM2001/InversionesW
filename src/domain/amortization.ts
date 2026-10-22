@@ -205,7 +205,7 @@ export function scheduleTotals(rows: ScheduleRow[]): ScheduleTotals {
 }
 
 /**
- * Cálculo inverso del prototipo WDEV:
+ * Cálculo inverso por cuota deseada:
  * Dado el valor de la cuota deseada (M), el número de cuotas (I) y la tasa pactada (J),
  * despeja el capital a prestar (G):
  * G = (M * I) / (1 + J)

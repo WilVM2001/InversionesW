@@ -78,7 +78,7 @@ export function LoanForm({
 }) {
   const [state, formAction] = useActionState<FormState, FormData>(createLoanAction, {});
 
-  // Modo de ingreso: POR CAPITAL (Tradicional) o POR CUOTA DESEADA (Prototipo WDEV)
+  // Modo de ingreso: POR CAPITAL (Tradicional) o POR CUOTA DESEADA (Cálculo Inverso)
   const [inputMode, setInputMode] = useState<"BY_PRINCIPAL" | "BY_TARGET_PAYMENT">("BY_PRINCIPAL");
 
   // Campos manuales directos
@@ -168,7 +168,7 @@ export function LoanForm({
     const rateFraction = percentToFraction(effectiveRatePercent).toNumber();
 
     // Determinar el capital a prestar:
-    // En modo BY_TARGET_PAYMENT (Prototipo WDEV), se despeja de la cuota deseada
+    // En modo BY_TARGET_PAYMENT, se despeja de la cuota deseada (cálculo inverso)
     let principal = 0;
     if (inputMode === "BY_TARGET_PAYMENT") {
       const targetPaymentDec = parseMoneyInput(targetPaymentStr);
@@ -305,7 +305,7 @@ export function LoanForm({
         </div>
       </div>
 
-      {/* 2. SELECTOR DE MODO DE INGRESO (TRADICIONAL vs PROTOTIPO WDEV) */}
+      {/* 2. SELECTOR DE MODO DE INGRESO (TRADICIONAL vs CÁLCULO INVERSO) */}
       <div className="rounded-xl border border-brand-300 bg-brand-50/40 p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -342,7 +342,7 @@ export function LoanForm({
                   : "text-ink-600 hover:text-ink-900"
               }`}
             >
-              2. Ingresar Cuota Deseada (Prototipo WDEV)
+              2. Ingresar Cuota Deseada (Cálculo Inverso)
             </button>
           </div>
         </div>
@@ -493,13 +493,13 @@ export function LoanForm({
         <h3 className="text-sm font-semibold text-ink-900 flex items-center gap-2">
           <Calculator size={18} className="text-brand-600" />
           {inputMode === "BY_TARGET_PAYMENT"
-            ? "Parámetros del Prototipo WDEV (Por Cuota Deseada)"
+            ? "Parámetros por Cuota Deseada (Cálculo Inverso)"
             : "Condiciones del préstamo"}
         </h3>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {inputMode === "BY_TARGET_PAYMENT" ? (
-            /* Modo Cuota Deseada (Prototipo WDEV) */
+            /* Modo Cuota Deseada (Cálculo Inverso) */
             <div>
               <label className="label text-brand-700 font-semibold" htmlFor="targetPayment">
                 Valor de la cuota deseada ($) *
@@ -635,7 +635,7 @@ export function LoanForm({
               <p className="text-xs font-semibold tracking-wider text-brand-700 uppercase">
                 Simulación en tiempo real (
                 {inputMode === "BY_TARGET_PAYMENT"
-                  ? "Prototipo WDEV: Cálculo Inverso por Cuota"
+                  ? "Cálculo Inverso por Cuota Deseada"
                   : amortizationMethod === "ORIGINAL_CAPITAL"
                     ? "Tasa Fija Directa"
                     : amortizationMethod === "BULLET"

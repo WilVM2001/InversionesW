@@ -77,8 +77,8 @@ describe("Plantilla de Control y Amortización (método francés)", () => {
   });
 });
 
-describe("prototipo wdev (método plano sobre capital original)", () => {
-  // Fila 2 del prototipo: 10.000.000, 15 cuotas, tasa 1.25.
+describe("método plano sobre capital original (cuota fija lineal)", () => {
+  // Caso de referencia: 10.000.000, 15 cuotas, tasa 1.25.
   const terms: LoanTerms = {
     principal: 10_000_000,
     rate: 1.25,
@@ -307,15 +307,15 @@ describe("firstDueDate manual (primer cobro independiente del desembolso)", () =
   });
 });
 
-describe("solvePrincipalFromPayment (Método inverso prototipo WDEV)", () => {
-  it("despeja exactamente el capital de la fila 3 del prototipo wdev (400.000)", () => {
-    // Fila 3: cuota 130.000, 4 cuotas, tasa 30% (0.3) -> capital 400.000
+describe("solvePrincipalFromPayment (Método inverso)", () => {
+  it("despeja exactamente el capital de la prueba (400.000)", () => {
+    // Caso 1: cuota 130.000, 4 cuotas, tasa 30% (0.3) -> capital 400.000
     const principal = solvePrincipalFromPayment(130_000, 4, 0.3);
     expect(principal).toBe(400_000);
   });
 
-  it("despeja exactamente el capital de la fila 2 del prototipo wdev (10.000.000)", () => {
-    // Fila 2: cuota 1.500.000, 15 cuotas, tasa 125% (1.25) -> capital 10.000.000
+  it("despeja exactamente el capital de la prueba (10.000.000)", () => {
+    // Caso 2: cuota 1.500.000, 15 cuotas, tasa 125% (1.25) -> capital 10.000.000
     const principal = solvePrincipalFromPayment(1_500_000, 15, 1.25);
     expect(principal).toBe(10_000_000);
   });

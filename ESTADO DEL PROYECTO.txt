@@ -258,7 +258,7 @@ Todas requieren sesion. Sin cookie devuelven 401; sin permiso, 403.
 Pruebas de flujo completo:
   - Formulario de prestamo /loans/new con doble modo de calculo en vivo:
       * Modo 1 (Directo): Ingresa capital prestado -> Calcula cuota y total.
-      * Modo 2 (Inverso Prototipo WDEV): Ingresa cuota deseada y plazo -> Calcula capital a prestar.
+      * Modo 2 (Inverso): Ingresa cuota deseada y plazo -> Calcula capital a prestar.
         Formula cuantitativa exacta: G = (M * I) / (1 + J), validada con filas 2 y 3 del Excel.
   - firstDueDate manual respetado en cuota 1 y frecuencias posteriores.
   - Abono directo a capital y absorcion de excedentes como ABONO_EXTRA.
@@ -279,7 +279,7 @@ Pruebas de flujo completo:
 12. HISTORIAL DE PENDIENTES RESUELTOS
 --------------------------------------------------------------------------------
   [RESUELTO] Eliminación de clientes implementada con modal de confirmación y borrado atómico en cascada.
-  [RESUELTO] Metodo inverso del prototipo WDEV (solvePrincipalFromPayment) implementado y probado.
+  [RESUELTO] Metodo inverso (solvePrincipalFromPayment) implementado y probado.
   [RESUELTO] Formulario /loans/new con toggle de calculo por Capital o por Cuota deseada.
   [RESUELTO] Desglose en vivo en PaymentForm: ver al momento del cobro cuanto va a interes y cuanto a capital.
   [RESUELTO] Saber por cliente / paciente cuanto se ha recaudado en capital y cuanto se ha ganado en intereses (en /clients y /clients/[id]).
