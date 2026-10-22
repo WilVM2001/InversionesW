@@ -83,6 +83,18 @@ const RATES: RateSeed[] = [
     moraCapPercentOfBalance: null,
     moraOnTotalBalance: true,
   },
+  {
+    name: "Mensual 2% Interés Puro (Bullet)",
+    description: "Cuota de solo interés periódico. El capital se paga al vencimiento o prórroga.",
+    rate: 0.02,
+    frequency: "MENSUAL",
+    interestType: "SIMPLE",
+    amortizationMethod: "BULLET",
+    moraDailyRatePercent: 1,
+    moraGraceDays: 0,
+    moraCapPercentOfBalance: null,
+    moraOnTotalBalance: false,
+  },
 ];
 
 const CLIENTS = [

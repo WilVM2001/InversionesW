@@ -173,7 +173,12 @@ export function LoanForm({
     if (inputMode === "BY_TARGET_PAYMENT") {
       const targetPaymentDec = parseMoneyInput(targetPaymentStr);
       if (!targetPaymentDec || targetPaymentDec.lte(0)) return null;
-      principal = solvePrincipalFromPayment(targetPaymentDec.toNumber(), periods, rateFraction);
+      if (amortizationMethod === "BULLET" || amortizationMethod === "INTEREST_ONLY") {
+        // En Interés Puro: Cuota = Capital * Tasa => Capital = Cuota / Tasa
+        principal = rateFraction > 0 ? targetPaymentDec.div(rateFraction).toDecimalPlaces(2).toNumber() : 0;
+      } else {
+        principal = solvePrincipalFromPayment(targetPaymentDec.toNumber(), periods, rateFraction);
+      }
     } else {
       const principalDec = parseMoneyInput(principalStr);
       if (!principalDec || principalDec.lte(0)) return null;
@@ -422,7 +427,6 @@ export function LoanForm({
           {/* Opción 3: Bullet / Americano */}
           <button
             type="button"
-            disabled={inputMode === "BY_TARGET_PAYMENT"}
             onClick={() => {
               setAmortizationMethod("BULLET");
               setInterestType("SIMPLE");
@@ -430,9 +434,7 @@ export function LoanForm({
             className={`rounded-xl border p-4 text-left transition relative cursor-pointer ${
               amortizationMethod === "BULLET" || amortizationMethod === "INTEREST_ONLY"
                 ? "border-brand-600 bg-brand-50/50 ring-2 ring-brand-500"
-                : inputMode === "BY_TARGET_PAYMENT"
-                  ? "opacity-50 border-ink-200 bg-ink-50 cursor-not-allowed"
-                  : "border-ink-200 bg-white hover:bg-ink-50/60"
+                : "border-ink-200 bg-white hover:bg-ink-50/60"
             }`}
           >
             <div className="flex items-center justify-between">
