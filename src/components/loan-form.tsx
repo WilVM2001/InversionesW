@@ -209,6 +209,8 @@ export function LoanForm({
         totals,
         principal,
         cuotaRegular: rows[0]?.scheduledPayment ?? 0,
+        cuotaFinal: rows[rows.length - 1]?.scheduledPayment ?? 0,
+        isBullet: amortizationMethod === "BULLET",
         totalScheduled: totals.totalScheduled,
         totalInterest: totals.totalInterest,
         nextDueDate: rows[0]?.dueDate ?? firstDueDate,
@@ -351,7 +353,7 @@ export function LoanForm({
         <label className="text-sm font-semibold text-ink-900 block">
           Método de cálculo del préstamo *
         </label>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-3">
           {/* Opción 1: Tasa Fija Directa */}
           <button
             type="button"
@@ -414,6 +416,40 @@ export function LoanForm({
             </p>
             <div className="mt-2.5 rounded-md bg-ink-100 px-2.5 py-1 text-[11px] font-medium text-ink-700">
               El interés baja a medida que se abona capital cuota a cuota.
+            </div>
+          </button>
+
+          {/* Opción 3: Bullet / Americano */}
+          <button
+            type="button"
+            disabled={inputMode === "BY_TARGET_PAYMENT"}
+            onClick={() => {
+              setAmortizationMethod("BULLET");
+              setInterestType("SIMPLE");
+            }}
+            className={`rounded-xl border p-4 text-left transition relative cursor-pointer ${
+              amortizationMethod === "BULLET"
+                ? "border-brand-600 bg-brand-50/50 ring-2 ring-brand-500"
+                : inputMode === "BY_TARGET_PAYMENT"
+                  ? "opacity-50 border-ink-200 bg-ink-50 cursor-not-allowed"
+                  : "border-ink-200 bg-white hover:bg-ink-50/60"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-ink-900 text-sm">
+                Bullet (Capital al Final)
+              </span>
+              {amortizationMethod === "BULLET" && (
+                <span className="rounded-full bg-brand-600 px-2.5 py-0.5 text-[10px] font-bold text-white uppercase tracking-wider">
+                  Seleccionado
+                </span>
+              )}
+            </div>
+            <p className="mt-1.5 text-xs text-ink-600">
+              Interés periódico fijo cuota a cuota y devolución del 100% del capital al vencimiento.
+            </p>
+            <div className="mt-2.5 rounded-md bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-900 ring-1 ring-emerald-200">
+              Cuotas 1 a n-1: 100% utilidad (interés). Cuota n: capital + interés.
             </div>
           </button>
         </div>
@@ -602,7 +638,9 @@ export function LoanForm({
                   ? "Prototipo WDEV: Cálculo Inverso por Cuota"
                   : amortizationMethod === "ORIGINAL_CAPITAL"
                     ? "Tasa Fija Directa"
-                    : "Saldo Insoluto PMT"}
+                    : amortizationMethod === "BULLET"
+                      ? "Bullet / Americano: Capital al Final"
+                      : "Saldo Insoluto PMT"}
                 )
               </p>
               <p className="text-xs text-ink-500">
@@ -639,16 +677,34 @@ export function LoanForm({
             ) : null}
 
             <div className="rounded-lg bg-white p-3.5 ring-1 ring-brand-300 shadow-xs">
-              <p className="text-xs font-semibold text-brand-700 uppercase">Valor de la cuota</p>
+              <p className="text-xs font-semibold text-brand-700 uppercase">
+                {simulation.isBullet
+                  ? `Cuotas 1 a ${Number(termPeriodsStr) - 1 || 1} (Solo Interés)`
+                  : "Valor de la cuota"}
+              </p>
               <p className="tabular mt-1 text-2xl font-bold text-brand-700">
                 {formatCOP(simulation.cuotaRegular)}
               </p>
               <p className="text-[11px] text-ink-500 mt-0.5">
-                {termPeriodsStr} pagos {frequency.toLowerCase()}es
+                {simulation.isBullet
+                  ? "100% Ganancia periódica"
+                  : `${termPeriodsStr} pagos ${frequency.toLowerCase()}es`}
               </p>
             </div>
 
-            {inputMode !== "BY_TARGET_PAYMENT" ? (
+            {simulation.isBullet ? (
+              <div className="rounded-lg bg-white p-3.5 ring-1 ring-emerald-300 shadow-xs">
+                <p className="text-xs font-semibold text-emerald-800 uppercase">
+                  Cuota final {termPeriodsStr} (Vencimiento)
+                </p>
+                <p className="tabular mt-1 text-2xl font-bold text-emerald-700">
+                  {formatCOP(simulation.cuotaFinal)}
+                </p>
+                <p className="text-[11px] text-ink-500 mt-0.5">
+                  Capital ({formatCOPWhole(simulation.principal)}) + Interés ({formatCOPWhole(simulation.cuotaRegular)})
+                </p>
+              </div>
+            ) : inputMode !== "BY_TARGET_PAYMENT" ? (
               <div className="rounded-lg bg-white p-3.5 ring-1 ring-ink-200">
                 <p className="text-xs text-ink-500 uppercase">Capital a desembolsar</p>
                 <p className="tabular mt-1 text-xl font-bold text-ink-900">
@@ -691,6 +747,10 @@ export function LoanForm({
             ) : amortizationMethod === "ORIGINAL_CAPITAL" ? (
               <span>
                 Capital {formatCOP(simulation.terms.principal)} + {simulation.effectiveRatePercent}% interés ({formatCOP(simulation.totals.totalInterest)}) = <strong>{formatCOP(simulation.totals.totalScheduled)} total</strong> ÷ {termPeriodsStr} cuotas = <strong className="text-brand-700">{formatCOP(simulation.cuotaRegular)} por cuota</strong>.
+              </span>
+            ) : amortizationMethod === "BULLET" ? (
+              <span>
+                <strong>Sistema Bullet (Americano):</strong> Cuotas 1 a {Number(termPeriodsStr) - 1 || 1} de solo interés <strong>{formatCOP(simulation.cuotaRegular)}</strong> (100% ganancia contable). En la cuota final ({termPeriodsStr}) se restituye el capital ({formatCOP(simulation.principal)}) + último interés ({formatCOP(simulation.cuotaRegular)}) = <strong className="text-brand-700">{formatCOP(simulation.cuotaFinal)}</strong>. Total recaudado: {formatCOP(simulation.totalScheduled)} (Ganancia de intereses: {formatCOP(simulation.totalInterest)}).
               </span>
             ) : (
               <span>

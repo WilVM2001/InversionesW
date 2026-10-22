@@ -13,6 +13,7 @@ import {
 } from "@/components/format";
 import { Breakdown, PrincipalProgress, StatCard } from "@/components/ui";
 import { PaymentForm } from "@/components/payment-form";
+import { BulletRenewalModal } from "@/components/bullet-renewal-modal";
 import { Sparkles } from "lucide-react";
 
 export default async function LoanDetailPage({
@@ -55,6 +56,20 @@ export default async function LoanDetailPage({
         </div>
         <div className="flex items-center gap-3">
           <Badge className={style.className}>{style.label}</Badge>
+          {loan.methodSnapshot === "BULLET" &&
+          loan.status !== "PAGADO" &&
+          can(user.role, "loans:write") ? (
+            <BulletRenewalModal
+              loanId={loan.id}
+              loanCode={loan.code}
+              currentTermPeriods={loan.termPeriods}
+              monthlyRate={Number(loan.rateSnapshot)}
+              outstandingPrincipal={view.summary.principalOutstanding}
+              currentPendingInterest={
+                next ? Math.max(0, next.row.interest - next.paidInterest) : 0
+              }
+            />
+          ) : null}
           {can(user.role, "payments:write") && loan.status !== "PAGADO" ? (
             <a
               href="#pago"
@@ -112,7 +127,9 @@ export default async function LoanDetailPage({
               <dd className="font-medium">
                 {loan.methodSnapshot === "ORIGINAL_CAPITAL"
                   ? "Sobre capital original"
-                  : "Sobre saldo insoluto (PMT)"}
+                  : loan.methodSnapshot === "BULLET"
+                    ? "Bullet (capital al final)"
+                    : "Sobre saldo insoluto (PMT)"}
               </dd>
             </div>
             <div className="flex justify-between gap-4">

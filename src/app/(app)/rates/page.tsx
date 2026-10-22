@@ -52,7 +52,9 @@ export default async function RatesPage() {
                 <td className="px-4 py-3 text-xs text-ink-600">
                   {r.amortizationMethod === "ORIGINAL_CAPITAL"
                     ? "Capital original"
-                    : "Saldo insoluto"}
+                    : r.amortizationMethod === "BULLET"
+                      ? "Bullet (capital al final)"
+                      : "Saldo insoluto"}
                   <p className="text-ink-500">
                     {r.interestType === "SIMPLE" ? "Interés simple" : "Interés compuesto"}
                   </p>

@@ -102,7 +102,11 @@ export function rescheduleWithPrepayment(input: RescheduleInput): RescheduleResu
   // Mantiene la cuota periódica aprox. constante y acorta el plazo
   let neededPeriods = previousTerm;
 
-  if (method === "ORIGINAL_CAPITAL") {
+  if (method === "BULLET") {
+    // En préstamos Bullet, el capital se amortiza al vencimiento.
+    // El abono extraordinario reduce el capital final y el interés mensual.
+    neededPeriods = previousTerm;
+  } else if (method === "ORIGINAL_CAPITAL") {
     // En cuota fija sobre capital original: cuota = P, capital = K = P / (1 + r)
     const factor = dec(1).plus(rate);
     const targetK = factor.isZero()

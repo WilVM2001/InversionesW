@@ -118,7 +118,9 @@ export default async function LoansPage({
                         {loan.termPeriods} cuota(s) ·{" "}
                         {loan.methodSnapshot === "ORIGINAL_CAPITAL"
                           ? "capital original"
-                          : "saldo insoluto"}
+                          : loan.methodSnapshot === "BULLET"
+                            ? "bullet (capital al final)"
+                            : "saldo insoluto"}
                       </p>
                     </td>
                     <td className="tabular px-4 py-3 text-right">

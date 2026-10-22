@@ -8,7 +8,7 @@ import {
   totalDueOf,
   type DecimalLike,
 } from "./money";
-import type { AmortizationMethod, LoanTerms, MoraRule, ScheduleRow } from "./types";
+import type { AmortizationMethod, Frequency, LoanTerms, MoraRule, ScheduleRow } from "./types";
 
 /**
  * Mora devengada para una cuota a una fecha de corte.
@@ -97,6 +97,39 @@ export function buildRows(
   const term = dueDates.length;
   if (principal <= 0) throw new Error("El capital del préstamo debe ser mayor que cero.");
   if (term <= 0) throw new Error("El plazo del préstamo debe ser mayor que cero.");
+
+  if (method === "BULLET") {
+    const rows: ScheduleRow[] = [];
+    const decPrincipal = dec(principal);
+    const monthlyInterest = internal(decPrincipal.times(rate));
+
+    for (let i = 0; i < term; i += 1) {
+      const isLast = i === term - 1;
+      const opening = principal;
+      const interest = monthlyInterest.toNumber();
+      const principalPart = isLast ? principal : 0;
+      const scheduled = internal(dec(principalPart).plus(interest)).toNumber();
+      const closing = isLast ? 0 : principal;
+
+      const row: ScheduleRow = {
+        period: firstPeriod + i,
+        dueDate: dueDates[i],
+        openingBalance: opening,
+        scheduledPayment: scheduled,
+        interest,
+        principal: principalPart,
+        extraPrincipal: 0,
+        accruedMora: 0,
+        closingBalance: closing,
+        totalDue: 0,
+      };
+      row.totalDue = totalDueOf(row).toNumber();
+      rows.push(row);
+    }
+
+    forceClosingBalance(rows[rows.length - 1], 0);
+    return rows;
+  }
 
   const isFlat = method === "ORIGINAL_CAPITAL";
 
@@ -217,4 +250,92 @@ export function applyExtraPrincipal(rows: ScheduleRow[], extra: number): Schedul
   }
 
   return next;
+}
+
+export interface RenewBulletScheduleInput {
+  lastMaturityRow: ScheduleRow;
+  newTermMonths: number;
+  rate: number;
+  frequency: Frequency;
+  capitalRemaining?: number;
+}
+
+export interface RenewBulletScheduleResult {
+  updatedLastRow: ScheduleRow;
+  newRows: ScheduleRow[];
+}
+
+/**
+ * Prórroga / Renovación de un préstamo BULLET:
+ * Convierte la cuota de vencimiento actual en una cuota ordinaria de solo interés
+ * y anexa N nuevos períodos manteniendo el interés mensual periódico sobre el
+ * capital aplazado, trasladando el vencimiento del capital a la última cuota prorrogada.
+ */
+export function renewBulletSchedule(input: RenewBulletScheduleInput): RenewBulletScheduleResult {
+  const { lastMaturityRow, newTermMonths, rate, frequency } = input;
+  if (newTermMonths < 1) {
+    throw new Error("El plazo de prórroga debe ser de al menos 1 período.");
+  }
+
+  // Capital que se aplaza
+  const principal =
+    input.capitalRemaining != null && input.capitalRemaining > 0
+      ? money(input.capitalRemaining)
+      : dec(lastMaturityRow.principal).gt(0)
+        ? money(lastMaturityRow.principal)
+        : money(lastMaturityRow.openingBalance);
+
+  const rateDec = dec(rate);
+  const im = money(principal.times(rateDec));
+
+  // La cuota de vencimiento anterior pasa a ser cuota ordinaria de solo interés
+  const updatedLastRow: ScheduleRow = {
+    ...lastMaturityRow,
+    openingBalance: principal.toNumber(),
+    scheduledPayment: im.toNumber(),
+    interest: im.toNumber(),
+    principal: 0,
+    closingBalance: principal.toNumber(),
+    totalDue: internal(im.plus(lastMaturityRow.accruedMora)).toNumber(),
+  };
+
+  const newRows: ScheduleRow[] = [];
+  const baseDate = toDate(lastMaturityRow.dueDate);
+
+  for (let k = 1; k <= newTermMonths; k += 1) {
+    const isFinal = k === newTermMonths;
+    const period = lastMaturityRow.period + k;
+    const dueDate = toIso(addPeriods(baseDate, frequency, k));
+
+    if (!isFinal) {
+      newRows.push({
+        period,
+        dueDate,
+        openingBalance: principal.toNumber(),
+        scheduledPayment: im.toNumber(),
+        interest: im.toNumber(),
+        principal: 0,
+        extraPrincipal: 0,
+        accruedMora: 0,
+        closingBalance: principal.toNumber(),
+        totalDue: im.toNumber(),
+      });
+    } else {
+      const scheduledPayment = money(principal.plus(im)).toNumber();
+      newRows.push({
+        period,
+        dueDate,
+        openingBalance: principal.toNumber(),
+        scheduledPayment,
+        interest: im.toNumber(),
+        principal: principal.toNumber(),
+        extraPrincipal: 0,
+        accruedMora: 0,
+        closingBalance: 0,
+        totalDue: scheduledPayment,
+      });
+    }
+  }
+
+  return { updatedLastRow, newRows };
 }

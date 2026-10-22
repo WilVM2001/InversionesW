@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { generateSchedule, scheduleTotals } from "@/domain/amortization";
+import { generateSchedule, scheduleTotals, renewBulletSchedule } from "@/domain/amortization";
 import {
   buildSnapshots,
   outstandingBalance,
@@ -629,6 +629,229 @@ export async function registerPayment(input: RegisterPaymentInput) {
     };
   });
 }
+
+export interface RenewBulletLoanInput {
+  loanId: string;
+  newTermMonths: number;
+  extensionFee?: number;
+  payCurrentInterest?: boolean;
+  paymentMethod?: string;
+  renewalDate?: string;
+  notes?: string;
+}
+
+/**
+ * Prórroga / Renovación de un préstamo BULLET:
+ * Permite al prestatario aplazar el vencimiento del capital pagando el interés
+ * devengado y una comisión opcional de prórroga, extendiendo el cronograma N períodos.
+ */
+export async function renewBulletLoan(input: RenewBulletLoanInput) {
+  if (input.newTermMonths < 1) {
+    throw new Error("El plazo de prórroga debe ser de al menos 1 período.");
+  }
+
+  const renewalIso = input.renewalDate ?? todayIso();
+  const renewalDate = toDate(renewalIso);
+
+  return prisma.$transaction(async (tx) => {
+    const loan = await tx.loan.findUnique({
+      where: { id: input.loanId },
+      include: {
+        installments: { orderBy: { period: "asc" } },
+        payments: { include: { allocations: true } },
+      },
+    });
+
+    if (!loan) throw new Error("El préstamo no existe.");
+    if (loan.status === "PAGADO") {
+      throw new Error("El préstamo ya se encuentra completamente pagado.");
+    }
+    if (loan.methodSnapshot !== "BULLET") {
+      throw new Error("Solo los préstamos con método BULLET admiten el mecanismo de prórroga.");
+    }
+
+    const activeInstallments = loan.installments.filter((i) => i.status !== "ANULADA");
+    if (activeInstallments.length === 0) {
+      throw new Error("El préstamo no contiene cuotas activas para prorrogar.");
+    }
+
+    const lastInstallment = activeInstallments[activeInstallments.length - 1];
+
+    // Saldo de capital remanente que se aplaza
+    const remainingPrincipal =
+      Number(lastInstallment.principal) > 0
+        ? Number(lastInstallment.principal) - Number(lastInstallment.paidPrincipal)
+        : Number(lastInstallment.openingBalance) - Number(lastInstallment.paidPrincipal);
+
+    if (remainingPrincipal <= 0) {
+      throw new Error("El capital ya está pagado; no procede prórroga.");
+    }
+
+    // Cronograma recalculado con el motor puro del dominio
+    const schedule = renewBulletSchedule({
+      lastMaturityRow: {
+        period: lastInstallment.period,
+        dueDate: dbDateToIso(lastInstallment.dueDate),
+        openingBalance: Number(lastInstallment.openingBalance),
+        scheduledPayment: Number(lastInstallment.scheduledPayment),
+        interest: Number(lastInstallment.interest),
+        principal: Number(lastInstallment.principal),
+        extraPrincipal: Number(lastInstallment.extraPrincipal),
+        accruedMora: Number(lastInstallment.accruedMora),
+        closingBalance: Number(lastInstallment.closingBalance),
+        totalDue: Number(lastInstallment.scheduledPayment) + Number(lastInstallment.accruedMora),
+      },
+      newTermMonths: input.newTermMonths,
+      rate: Number(loan.rateSnapshot),
+      frequency: loan.frequencySnapshot as Frequency,
+      capitalRemaining: remainingPrincipal,
+    });
+
+    const pendingInterest = Math.max(
+      0,
+      schedule.updatedLastRow.interest - Number(lastInstallment.paidInterest),
+    );
+    const extensionFee = input.extensionFee ?? 0;
+    const shouldPayInterest = input.payCurrentInterest ?? true;
+    const paymentAmount = (shouldPayInterest ? pendingInterest : 0) + extensionFee;
+
+    let receiptNo = "";
+
+    if (paymentAmount > 0) {
+      receiptNo = await getNextReceiptNo(tx);
+      const paymentRecord = await tx.payment.create({
+        data: {
+          receiptNo,
+          loanId: loan.id,
+          paidAt: renewalDate,
+          amount: new Prisma.Decimal(paymentAmount),
+          method: input.paymentMethod || "TRANSFERENCIA",
+          kind: "CUOTA",
+          notes: `Prórroga Bullet (+${input.newTermMonths} períodos). ${input.notes ?? ""}`.trim(),
+        },
+      });
+
+      if (shouldPayInterest && pendingInterest > 0) {
+        await tx.paymentAllocation.create({
+          data: {
+            paymentId: paymentRecord.id,
+            installmentId: lastInstallment.id,
+            period: lastInstallment.period,
+            type: "INTERES",
+            amount: new Prisma.Decimal(pendingInterest),
+          },
+        });
+
+        await tx.ledgerEntry.create({
+          data: {
+            loanId: loan.id,
+            paymentId: paymentRecord.id,
+            category: "INTERES",
+            direction: "INGRESO",
+            amount: new Prisma.Decimal(pendingInterest),
+            entryDate: renewalDate,
+            notes: `Recibo ${receiptNo} (Interés prórroga C${lastInstallment.period})`,
+          },
+        });
+      }
+
+      if (extensionFee > 0) {
+        await tx.ledgerEntry.create({
+          data: {
+            loanId: loan.id,
+            paymentId: paymentRecord.id,
+            category: "OTROS",
+            direction: "INGRESO",
+            amount: new Prisma.Decimal(extensionFee),
+            entryDate: renewalDate,
+            notes: `Recibo ${receiptNo} (Comisión de prórroga Bullet ${loan.code})`,
+          },
+        });
+      }
+    }
+
+    // Actualizar la última cuota existente (que antes era vencimiento de capital)
+    const newPaidInterest =
+      shouldPayInterest && pendingInterest > 0
+        ? Number(lastInstallment.paidInterest) + pendingInterest
+        : Number(lastInstallment.paidInterest);
+    const isNowFullyPaid = newPaidInterest >= schedule.updatedLastRow.interest - 0.01;
+
+    await tx.loanInstallment.update({
+      where: { id: lastInstallment.id },
+      data: {
+        openingBalance: new Prisma.Decimal(schedule.updatedLastRow.openingBalance),
+        interest: new Prisma.Decimal(schedule.updatedLastRow.interest),
+        principal: new Prisma.Decimal(schedule.updatedLastRow.principal),
+        scheduledPayment: new Prisma.Decimal(schedule.updatedLastRow.scheduledPayment),
+        closingBalance: new Prisma.Decimal(schedule.updatedLastRow.closingBalance),
+        paidInterest: new Prisma.Decimal(newPaidInterest),
+        status: isNowFullyPaid ? "PAGADA" : lastInstallment.status,
+        paidAt: isNowFullyPaid ? renewalDate : lastInstallment.paidAt,
+      },
+    });
+
+    // Anexar las nuevas cuotas extendidas
+    await tx.loanInstallment.createMany({
+      data: schedule.newRows.map((r) => ({
+        loanId: loan.id,
+        period: r.period,
+        dueDate: toDate(r.dueDate),
+        openingBalance: new Prisma.Decimal(r.openingBalance),
+        scheduledPayment: new Prisma.Decimal(r.scheduledPayment),
+        interest: new Prisma.Decimal(r.interest),
+        principal: new Prisma.Decimal(r.principal),
+        extraPrincipal: new Prisma.Decimal(0),
+        accruedMora: new Prisma.Decimal(0),
+        closingBalance: new Prisma.Decimal(r.closingBalance),
+        status: "PENDIENTE" as const,
+      })),
+    });
+
+    // Actualizar el préstamo
+    const newTermPeriods = loan.termPeriods + input.newTermMonths;
+    await tx.loan.update({
+      where: { id: loan.id },
+      data: {
+        termPeriods: newTermPeriods,
+        status: "VIGENTE",
+        notes: input.notes
+          ? `${loan.notes ? loan.notes + "\n" : ""}[Prórroga]: ${input.notes}`
+          : loan.notes,
+      },
+    });
+
+    // Registrar evento de reestructuración / prórroga
+    await tx.loanEvent.create({
+      data: {
+        loanId: loan.id,
+        type: "REESTRUCTURA",
+        amount: new Prisma.Decimal(remainingPrincipal),
+        notes: `Prórroga Bullet (+${input.newTermMonths} períodos). Capital aplazado: ${remainingPrincipal.toLocaleString("es-CO")}.`,
+        payload: {
+          previousTerm: loan.termPeriods,
+          extendedBy: input.newTermMonths,
+          newTerm: newTermPeriods,
+          extensionFee,
+          interestPaid: shouldPayInterest ? pendingInterest : 0,
+          receiptNo: receiptNo || null,
+        },
+      },
+    });
+
+    return {
+      loanId: loan.id,
+      previousTerm: loan.termPeriods,
+      newTermPeriods,
+      extendedBy: input.newTermMonths,
+      capitalCarriedForward: remainingPrincipal,
+      interestPaid: shouldPayInterest ? pendingInterest : 0,
+      extensionFee,
+      receiptNo,
+    };
+  });
+}
+
 
 /** Marca vencidas las cuotas cuyo vencimiento ya pasó. */
 export async function refreshOverdueStatuses(): Promise<number> {

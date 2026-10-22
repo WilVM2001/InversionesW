@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { can, requireUser } from "@/server/auth";
-import { createLoan, registerPayment } from "@/server/loans";
+import { createLoan, registerPayment, renewBulletLoan } from "@/server/loans";
+import { AMORTIZATION_METHODS } from "@/domain/types";
 import { parseMoneyInput, parsePercentInput, parseIntegerInput } from "@/domain/parse";
 import { formatCOP } from "@/components/format";
 import { Prisma } from "@/generated/prisma/client";
@@ -261,7 +262,7 @@ const loanSchema = z.object({
     "ANUAL",
   ]),
   interestType: z.enum(["SIMPLE", "COMPUESTA"]),
-  amortizationMethod: z.enum(["ORIGINAL_CAPITAL", "OUTSTANDING_BALANCE"]),
+  amortizationMethod: z.enum(AMORTIZATION_METHODS),
   termPeriods: z.number().int().positive("El plazo debe ser mayor que cero."),
   disbursementDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha de desembolso inválida."),
   firstDueDate: z
@@ -336,6 +337,84 @@ export async function createLoanAction(
   revalidatePath("/loans");
   revalidatePath("/dashboard");
   redirect(`/loans/${createdLoanId}`);
+}
+
+const renewBulletSchema = z.object({
+  loanId: z.string().min(1, "ID del préstamo requerido."),
+  newTermMonths: z.number().int().positive("El plazo de prórroga debe ser mayor que cero."),
+  extensionFee: z.number().min(0).default(0),
+  payCurrentInterest: z.boolean().default(true),
+  paymentMethod: z.string().min(1, "Selecciona el medio de pago."),
+  renewalDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida.").optional(),
+  notes: z.string().optional(),
+});
+
+export async function renewBulletLoanAction(
+  _prev: FormState,
+  form: FormData,
+): Promise<FormState> {
+  const user = await requireUser();
+  if (!can(user.role, "loans:write")) return { error: "No tienes permiso para renovar préstamos." };
+
+  const parsed = renewBulletSchema.safeParse({
+    loanId: str(form, "loanId"),
+    newTermMonths: intField(form, "newTermMonths"),
+    extensionFee: moneyField(form, "extensionFee"),
+    payCurrentInterest: form.get("payCurrentInterest") !== "false",
+    paymentMethod: str(form, "paymentMethod") || "TRANSFERENCIA",
+    renewalDate: str(form, "renewalDate") || undefined,
+    notes: str(form, "notes") || undefined,
+  });
+
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  try {
+    const result = await renewBulletLoan({
+      loanId: parsed.data.loanId,
+      newTermMonths: parsed.data.newTermMonths,
+      extensionFee: parsed.data.extensionFee,
+      payCurrentInterest: parsed.data.payCurrentInterest,
+      paymentMethod: parsed.data.paymentMethod,
+      renewalDate: parsed.data.renewalDate,
+      notes: parsed.data.notes,
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: "UPDATE",
+        entity: "Loan",
+        entityId: parsed.data.loanId,
+        details: {
+          action: "RENEW_BULLET",
+          extendedBy: result.extendedBy,
+          newTermPeriods: result.newTermPeriods,
+          capitalCarriedForward: result.capitalCarriedForward,
+          interestPaid: result.interestPaid,
+          extensionFee: result.extensionFee,
+          receiptNo: result.receiptNo,
+        },
+      },
+    });
+
+    revalidatePath(`/loans/${parsed.data.loanId}`);
+    revalidatePath("/loans");
+    revalidatePath("/dashboard");
+
+    let msg = `Prórroga Bullet exitosa: extendido por ${result.extendedBy} períodos (total ${result.newTermPeriods} cuotas).`;
+    if (result.interestPaid > 0) {
+      msg += ` Cobro de interés: ${formatCOP(result.interestPaid)}.`;
+    }
+    if (result.extensionFee > 0) {
+      msg += ` Comisión de prórroga: ${formatCOP(result.extensionFee)}.`;
+    }
+    if (result.receiptNo) {
+      msg += ` Recibo: ${result.receiptNo}.`;
+    }
+    return { ok: msg };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error al aplicar la prórroga del préstamo." };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -432,7 +511,7 @@ const rateSchema = z.object({
     "ANUAL",
   ]),
   interestType: z.enum(["SIMPLE", "COMPUESTA"]),
-  amortizationMethod: z.enum(["ORIGINAL_CAPITAL", "OUTSTANDING_BALANCE"]),
+  amortizationMethod: z.enum(AMORTIZATION_METHODS),
   moraDailyRatePercent: z.number().min(0).default(0),
   moraGraceDays: z.number().int().min(0).default(0),
   extraPaymentStrategy: z.enum(["REDUCIR_CUOTA", "REDUCIR_PLAZO"]).default("REDUCIR_CUOTA"),
