@@ -145,6 +145,74 @@ export async function createClientAction(
   redirect(`/clients/${clientId}`);
 }
 
+const updateClientSchema = clientSchema.extend({
+  clientId: z.string().min(1, "ID de cliente requerido."),
+});
+
+export async function updateClientAction(
+  _prev: FormState,
+  form: FormData,
+): Promise<FormState> {
+  const user = await requireUser();
+  if (!can(user.role, "clients:write")) return { error: "No tienes permiso para editar clientes." };
+
+  const parsed = updateClientSchema.safeParse({
+    clientId: str(form, "clientId"),
+    documentId: str(form, "documentId"),
+    firstName: str(form, "firstName"),
+    lastName: str(form, "lastName"),
+    phone: str(form, "phone") || undefined,
+    email: str(form, "email") || undefined,
+    address: str(form, "address") || undefined,
+    occupation: str(form, "occupation") || undefined,
+    notes: str(form, "notes") || undefined,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  const existing = await prisma.client.findFirst({
+    where: {
+      documentId: parsed.data.documentId,
+      id: { not: parsed.data.clientId },
+    },
+  });
+  if (existing) return { error: "Ya existe otro cliente con ese documento." };
+
+  try {
+    const updated = await prisma.client.update({
+      where: { id: parsed.data.clientId },
+      data: {
+        documentId: parsed.data.documentId,
+        firstName: parsed.data.firstName,
+        lastName: parsed.data.lastName,
+        phone: parsed.data.phone ?? null,
+        email: parsed.data.email ?? null,
+        address: parsed.data.address ?? null,
+        occupation: parsed.data.occupation ?? null,
+        notes: parsed.data.notes ?? null,
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: "UPDATE",
+        entity: "Client",
+        entityId: updated.id,
+        details: {
+          documentId: updated.documentId,
+          name: `${updated.firstName} ${updated.lastName}`,
+        },
+      },
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error al actualizar cliente." };
+  }
+
+  revalidatePath("/clients");
+  revalidatePath(`/clients/${parsed.data.clientId}`);
+  return { ok: "Cliente actualizado correctamente." };
+}
+
 export async function deleteClientAction(
   _prev: FormState,
   form: FormData,

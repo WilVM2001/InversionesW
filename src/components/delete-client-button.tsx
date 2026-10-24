@@ -37,7 +37,7 @@ export function DeleteClientButton({
   clientName: string;
   documentId: string;
   loansCount?: number;
-  variant?: "button" | "icon";
+  variant?: "button" | "icon" | "menuItem";
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [state, formAction] = useActionState<FormState, FormData>(
@@ -54,6 +54,15 @@ export function DeleteClientButton({
           className="inline-flex items-center gap-1.5 rounded-lg border border-danger-200 bg-danger-50 px-3.5 py-2 text-xs font-semibold text-danger-700 transition hover:bg-danger-100 hover:text-danger-800 shadow-xs"
         >
           <Trash2 size={14} /> Eliminar cliente
+        </button>
+      ) : variant === "menuItem" ? (
+        <button
+          type="button"
+          onClick={() => setIsOpen(true)}
+          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium text-danger-700 hover:bg-danger-50 hover:text-danger-900 transition min-h-[38px] cursor-pointer"
+        >
+          <Trash2 size={15} className="text-danger-600 shrink-0" />
+          <span>Eliminar cliente</span>
         </button>
       ) : (
         <button

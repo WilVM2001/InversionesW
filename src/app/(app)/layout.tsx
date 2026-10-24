@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/server/auth";
 import { logoutAction } from "@/server/actions";
 import { NavLinks } from "@/components/nav-links";
+import { MobileBottomNav } from "@/components/mobile-nav";
 
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: "Administrador",
@@ -56,7 +57,8 @@ export default async function AppLayout({
             </button>
           </form>
         </header>
-        <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
+        <main className="flex-1 p-4 pb-24 sm:p-6 lg:p-8 lg:pb-8">{children}</main>
+        <MobileBottomNav />
       </div>
     </div>
   );

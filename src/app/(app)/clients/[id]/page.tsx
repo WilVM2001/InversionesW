@@ -4,7 +4,7 @@ import { requirePermission, can } from "@/server/auth";
 import { getClientSummary } from "@/server/queries";
 import { formatCOP, formatCOPWhole, formatDate, LOAN_STYLES, Badge } from "@/components/format";
 import { PrincipalProgress, StatCard } from "@/components/ui";
-import { DeleteClientButton } from "@/components/delete-client-button";
+import { ClientDetailHeaderActions } from "@/components/client-detail-header-actions";
 import { Calendar, AlertTriangle, ArrowRight } from "lucide-react";
 
 export default async function ClientDetailPage({
@@ -35,23 +35,11 @@ export default async function ClientDetailPage({
               "Sin datos de contacto"}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          {can(user.role, "clients:write") && (
-            <DeleteClientButton
-              clientId={client.id}
-              clientName={`${client.firstName} ${client.lastName}`}
-              documentId={client.documentId}
-              loansCount={client.loans.length}
-              variant="button"
-            />
-          )}
-          <Link
-            href={`/loans/new?clientId=${client.id}`}
-            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 shadow-xs"
-          >
-            Nuevo préstamo
-          </Link>
-        </div>
+        <ClientDetailHeaderActions
+          client={client}
+          loansCount={client.loans.length}
+          canWrite={can(user.role, "clients:write")}
+        />
       </header>
 
       {/* Tarjetas de Resumen Financiero Consolidado */}

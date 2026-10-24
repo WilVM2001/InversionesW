@@ -4,6 +4,7 @@ import { listClients } from "@/server/queries";
 import { formatCOPWhole } from "@/components/format";
 import { EmptyState, StatCard } from "@/components/ui";
 import { DeleteClientButton } from "@/components/delete-client-button";
+import { ClientActionsDropdown } from "@/components/client-actions-dropdown";
 
 export default async function ClientsPage({
   searchParams,
@@ -128,89 +129,221 @@ export default async function ClientsPage({
           }
         />
       ) : (
-        <div className="card overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-ink-200 text-left text-xs font-semibold text-ink-600 bg-ink-50/50">
-                <th className="px-4 py-3">Documento</th>
-                <th className="px-4 py-3">Nombre</th>
-                <th className="px-4 py-3">Teléfono</th>
-                <th className="px-4 py-3 text-right">Créditos</th>
-                <th className="px-4 py-3 text-right">Capital prestado</th>
-                <th className="px-4 py-3 text-right text-brand-700">Capital recuperado</th>
-                <th className="px-4 py-3 text-right">Capital pendiente</th>
-                <th className="px-4 py-3 text-right text-positive-700">Intereses ganados</th>
-                <th className="px-3 py-3 text-center">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-ink-100">
-              {clientMetrics.map(({ client: c, delivered, recovered, pending, interestEarned }) => {
-                return (
-                  <tr key={c.id} className="hover:bg-ink-50/70 transition">
-                    <td className="tabular px-4 py-3 text-ink-600 font-mono text-xs">{c.documentId}</td>
-                    <td className="px-4 py-3">
+        <>
+          {/* ========================================================= */}
+          {/* VISTA MÓVIL: Tarjetas optimizadas para celular            */}
+          {/* ========================================================= */}
+          <div className="space-y-3 md:hidden">
+            {clientMetrics.map(({ client: c, delivered, recovered, pending, interestEarned }) => {
+              const cleanPhone = c.phone ? c.phone.replace(/\D/g, "") : "";
+              const whatsappUrl = cleanPhone
+                ? `https://wa.me/${cleanPhone.length === 10 ? `57${cleanPhone}` : cleanPhone}`
+                : null;
+              const telUrl = cleanPhone ? `tel:${cleanPhone}` : null;
+
+              return (
+                <div key={c.id} className="card p-4 space-y-3 shadow-xs border border-ink-200">
+                  {/* Fila superior: Nombre, Documento y Menú Desplegable */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
                       <Link
                         href={`/clients/${c.id}`}
-                        className="font-semibold text-ink-900 hover:text-brand-600 hover:underline"
+                        className="font-bold text-ink-900 hover:text-brand-600 text-base leading-tight block truncate"
                       >
                         {c.firstName} {c.lastName}
                       </Link>
-                    </td>
-                    <td className="tabular px-4 py-3 text-ink-600">{c.phone ?? "—"}</td>
-                    <td className="tabular px-4 py-3 text-right text-ink-600 font-medium">
-                      {c.loans.length}
-                    </td>
-                    <td className="tabular px-4 py-3 text-right text-ink-700">
-                      {formatCOPWhole(delivered)}
-                    </td>
-                    <td className="tabular px-4 py-3 text-right font-semibold text-brand-700">
-                      {formatCOPWhole(recovered)}
-                    </td>
-                    <td className="tabular px-4 py-3 text-right font-medium text-ink-900">
-                      {formatCOPWhole(pending)}
-                    </td>
-                    <td className="tabular px-4 py-3 text-right font-bold text-positive-700">
-                      {formatCOPWhole(interestEarned)}
-                    </td>
-                    <td className="px-3 py-3 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        {can(user.role, "clients:write") && (
-                          <DeleteClientButton
-                            clientId={c.id}
-                            clientName={`${c.firstName} ${c.lastName}`}
-                            documentId={c.documentId}
-                            loansCount={c.loans.length}
-                            variant="icon"
-                          />
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className="font-mono text-xs text-ink-600 bg-ink-100 px-2 py-0.5 rounded-md font-medium">
+                          Doc. {c.documentId}
+                        </span>
+                        {c.occupation && (
+                          <span className="text-xs text-ink-400 truncate">· {c.occupation}</span>
                         )}
                       </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-ink-300 bg-ink-50 font-bold text-ink-900 text-xs">
-                <td className="px-4 py-3" colSpan={4}>
-                  TOTALES CONSOLIDADOS ({clients.length} clientes)
-                </td>
-                <td className="tabular px-4 py-3 text-right">
-                  {formatCOPWhole(globalDelivered)}
-                </td>
-                <td className="tabular px-4 py-3 text-right text-brand-700">
-                  {formatCOPWhole(globalRecovered)}
-                </td>
-                <td className="tabular px-4 py-3 text-right">
-                  {formatCOPWhole(globalPending)}
-                </td>
-                <td className="tabular px-4 py-3 text-right text-positive-700">
-                  {formatCOPWhole(globalInterestEarned)}
-                </td>
-                <td className="px-3 py-3" />
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+                    </div>
+
+                    {/* Menú Desplegable Táctil */}
+                    <ClientActionsDropdown
+                      client={c}
+                      loansCount={c.loans.length}
+                      canWrite={can(user.role, "clients:write")}
+                    />
+                  </div>
+
+                  {/* Contacto directo si tiene teléfono */}
+                  {c.phone && (
+                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-ink-100 text-xs">
+                      <span className="text-ink-600 font-medium truncate">📞 {c.phone}</span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {whatsappUrl && (
+                          <a
+                            href={whatsappUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 ring-1 ring-emerald-200 hover:bg-emerald-100"
+                          >
+                            WhatsApp
+                          </a>
+                        )}
+                        {telUrl && (
+                          <a
+                            href={telUrl}
+                            className="inline-flex items-center gap-1 rounded-md bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-800 ring-1 ring-sky-200 hover:bg-sky-100"
+                          >
+                            Llamar
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Resumen financiero en cuadrícula 2x2 */}
+                  <div className="grid grid-cols-2 gap-2 rounded-lg bg-ink-50/70 p-2.5 text-xs border border-ink-100">
+                    <div>
+                      <p className="text-[10px] uppercase font-semibold text-ink-400 tracking-wider">
+                        Capital Prestado
+                      </p>
+                      <p className="tabular font-medium text-ink-800 mt-0.5">
+                        {formatCOPWhole(delivered)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase font-semibold text-brand-600 tracking-wider">
+                        Capital Recuperado
+                      </p>
+                      <p className="tabular font-semibold text-brand-700 mt-0.5">
+                        {formatCOPWhole(recovered)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase font-semibold text-ink-400 tracking-wider">
+                        Capital Pendiente
+                      </p>
+                      <p
+                        className={`tabular font-bold mt-0.5 ${
+                          pending > 0 ? "text-amber-700" : "text-positive-700"
+                        }`}
+                      >
+                        {formatCOPWhole(pending)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase font-semibold text-positive-700 tracking-wider">
+                        Interés Ganado
+                      </p>
+                      <p className="tabular font-bold text-positive-700 mt-0.5">
+                        {formatCOPWhole(interestEarned)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Acciones directas al pie */}
+                  <div className="flex items-center justify-between pt-1 text-xs">
+                    <Link
+                      href={`/clients/${c.id}`}
+                      className="font-medium text-brand-600 hover:underline"
+                    >
+                      {c.loans.length === 1
+                        ? "1 crédito registrado"
+                        : `${c.loans.length} créditos registrados`}
+                    </Link>
+                    {can(user.role, "loans:write") && (
+                      <Link
+                        href={`/loans/new?clientId=${c.id}`}
+                        className="font-semibold text-brand-700 hover:text-brand-900 bg-brand-50 px-2.5 py-1 rounded-md transition"
+                      >
+                        + Nuevo préstamo
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ========================================================= */}
+          {/* VISTA ESCRITORIO: Tabla completa con menú desplegable     */}
+          {/* ========================================================= */}
+          <div className="hidden md:block card overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-ink-200 text-left text-xs font-semibold text-ink-600 bg-ink-50/50">
+                  <th className="px-4 py-3">Documento</th>
+                  <th className="px-4 py-3">Nombre</th>
+                  <th className="px-4 py-3">Teléfono</th>
+                  <th className="px-4 py-3 text-right">Créditos</th>
+                  <th className="px-4 py-3 text-right">Capital prestado</th>
+                  <th className="px-4 py-3 text-right text-brand-700">Capital recuperado</th>
+                  <th className="px-4 py-3 text-right">Capital pendiente</th>
+                  <th className="px-4 py-3 text-right text-positive-700">Intereses ganados</th>
+                  <th className="px-3 py-3 text-center">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-ink-100">
+                {clientMetrics.map(({ client: c, delivered, recovered, pending, interestEarned }) => {
+                  return (
+                    <tr key={c.id} className="hover:bg-ink-50/70 transition">
+                      <td className="tabular px-4 py-3 text-ink-600 font-mono text-xs">{c.documentId}</td>
+                      <td className="px-4 py-3">
+                        <Link
+                          href={`/clients/${c.id}`}
+                          className="font-semibold text-ink-900 hover:text-brand-600 hover:underline"
+                        >
+                          {c.firstName} {c.lastName}
+                        </Link>
+                      </td>
+                      <td className="tabular px-4 py-3 text-ink-600">{c.phone ?? "—"}</td>
+                      <td className="tabular px-4 py-3 text-right text-ink-600 font-medium">
+                        {c.loans.length}
+                      </td>
+                      <td className="tabular px-4 py-3 text-right text-ink-700">
+                        {formatCOPWhole(delivered)}
+                      </td>
+                      <td className="tabular px-4 py-3 text-right font-semibold text-brand-700">
+                        {formatCOPWhole(recovered)}
+                      </td>
+                      <td className="tabular px-4 py-3 text-right font-medium text-ink-900">
+                        {formatCOPWhole(pending)}
+                      </td>
+                      <td className="tabular px-4 py-3 text-right font-bold text-positive-700">
+                        {formatCOPWhole(interestEarned)}
+                      </td>
+                      <td className="px-3 py-3 text-center">
+                        <div className="flex items-center justify-center">
+                          <ClientActionsDropdown
+                            client={c}
+                            loansCount={c.loans.length}
+                            canWrite={can(user.role, "clients:write")}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-ink-300 bg-ink-50 font-bold text-ink-900 text-xs">
+                  <td className="px-4 py-3" colSpan={4}>
+                    TOTALES CONSOLIDADOS ({clients.length} clientes)
+                  </td>
+                  <td className="tabular px-4 py-3 text-right">
+                    {formatCOPWhole(globalDelivered)}
+                  </td>
+                  <td className="tabular px-4 py-3 text-right text-brand-700">
+                    {formatCOPWhole(globalRecovered)}
+                  </td>
+                  <td className="tabular px-4 py-3 text-right">
+                    {formatCOPWhole(globalPending)}
+                  </td>
+                  <td className="tabular px-4 py-3 text-right text-positive-700">
+                    {formatCOPWhole(globalInterestEarned)}
+                  </td>
+                  <td className="px-3 py-3" />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );
