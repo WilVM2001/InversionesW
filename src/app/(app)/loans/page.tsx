@@ -79,6 +79,7 @@ export default async function LoansPage({
                 <th className="px-4 py-3 text-right font-medium">Capital</th>
                 <th className="px-4 py-3 text-right font-medium">Capital pendiente</th>
                 <th className="px-4 py-3 font-medium">Estado</th>
+                <th className="px-4 py-3 text-right font-medium">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-100">
@@ -131,6 +132,23 @@ export default async function LoansPage({
                     </td>
                     <td className="px-4 py-3">
                       <Badge className={style.className}>{style.label}</Badge>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-2 text-xs">
+                        <Link
+                          href={`/loans/${loan.id}`}
+                          className="font-medium text-brand-600 hover:text-brand-800"
+                        >
+                          Ver
+                        </Link>
+                        <span className="text-ink-300">·</span>
+                        <Link
+                          href={`/loans/${loan.id}/edit`}
+                          className="font-medium text-ink-600 hover:text-ink-900"
+                        >
+                          Editar
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 );

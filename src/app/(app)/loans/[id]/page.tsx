@@ -14,7 +14,7 @@ import {
 import { Breakdown, PrincipalProgress, StatCard } from "@/components/ui";
 import { PaymentForm } from "@/components/payment-form";
 import { BulletRenewalModal } from "@/components/bullet-renewal-modal";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Pencil } from "lucide-react";
 
 export default async function LoanDetailPage({
   params,
@@ -56,6 +56,14 @@ export default async function LoanDetailPage({
         </div>
         <div className="flex items-center gap-3">
           <Badge className={style.className}>{style.label}</Badge>
+          {can(user.role, "loans:write") && (
+            <Link
+              href={`/loans/${loan.id}/edit`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-ink-300 bg-white px-3.5 py-2 text-sm font-semibold text-ink-700 shadow-xs transition hover:bg-ink-50 hover:text-ink-900"
+            >
+              <Pencil size={15} /> Editar préstamo
+            </Link>
+          )}
           {(loan.methodSnapshot === "BULLET" ||
             loan.methodSnapshot === "INTEREST_ONLY") &&
           loan.status !== "PAGADO" &&

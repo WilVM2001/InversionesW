@@ -20,7 +20,7 @@ import type {
   ScheduleRow,
   SurplusMode,
 } from "@/domain/types";
-import { Prisma } from "@/generated/prisma/client";
+import { LoanStatus, Prisma } from "@/generated/prisma/client";
 
 /** Convierte los registros de Prisma a los tipos del dominio. */
 function termsFromLoan(loan: {
@@ -881,4 +881,325 @@ export async function refreshOverdueStatuses(): Promise<number> {
     data: { status: "VENCIDA" },
   });
   return result.count;
+}
+
+export interface UpdateLoanInput {
+  loanId: string;
+  clientId: string;
+  principal: number;
+  ratePercent?: number | null;
+  rate?: number | null;
+  frequency?: Frequency | null;
+  interestType?: InterestType | null;
+  amortizationMethod?: AmortizationMethod | null;
+  termPeriods: number;
+  disbursementDate: string;
+  firstDueDate?: string | null;
+  moraDailyRatePercent?: number | null;
+  moraGraceDays?: number | null;
+  extraPaymentStrategy?: ExtraPaymentStrategy | null;
+  status?: LoanStatus | null;
+  notes?: string | null;
+}
+
+/**
+ * Permite editar las condiciones contractuales de cualquier préstamo existente.
+ * Si el préstamo ya tiene pagos registrados, el cronograma se regenera con las
+ * nuevas condiciones y los pagos existentes se re-imputan secuencialmente.
+ */
+export async function updateLoan(input: UpdateLoanInput) {
+  if (input.principal <= 0) throw new Error("El capital debe ser mayor que cero.");
+  if (input.termPeriods <= 0) throw new Error("El número de cuotas debe ser mayor que cero.");
+
+  return prisma.$transaction(async (tx) => {
+    // 1. Cargar préstamo existente con cuotas y pagos
+    const loan = await tx.loan.findUnique({
+      where: { id: input.loanId },
+      include: {
+        payments: {
+          orderBy: { paidAt: "asc" },
+          include: { allocations: true },
+        },
+        installments: { orderBy: { period: "asc" } },
+      },
+    });
+    if (!loan) throw new Error("El préstamo a editar no existe.");
+
+    // 2. Resolver tasa y condiciones
+    let fractionRate: number;
+    if (input.ratePercent != null && input.ratePercent >= 0) {
+      fractionRate = percentToFraction(input.ratePercent).toNumber();
+    } else if (input.rate != null && input.rate >= 0) {
+      fractionRate = input.rate;
+    } else {
+      fractionRate = Number(loan.rateSnapshot);
+    }
+
+    const frequency = (input.frequency ?? loan.frequencySnapshot) as Frequency;
+    const interestType = (input.interestType ?? loan.interestTypeSnapshot) as InterestType;
+    const amortizationMethod = (input.amortizationMethod ?? loan.methodSnapshot) as AmortizationMethod;
+    const moraDailyRate =
+      input.moraDailyRatePercent != null
+        ? input.moraDailyRatePercent
+        : Number(loan.moraDailyRateSnapshot);
+    const moraGraceDays =
+      input.moraGraceDays != null ? input.moraGraceDays : loan.moraGraceDaysSnapshot;
+    const disbursement = toDate(input.disbursementDate);
+
+    const terms: LoanTerms = {
+      principal: input.principal,
+      rate: fractionRate,
+      frequency,
+      interestType,
+      amortizationMethod,
+      termPeriods: input.termPeriods,
+      disbursementDate: input.disbursementDate,
+      firstDueDate: input.firstDueDate || null,
+      mora: {
+        dailyRatePercent: moraDailyRate,
+        graceDays: moraGraceDays,
+        capPercentOfBalance: null,
+        onTotalBalance: false,
+      },
+    };
+
+    const rows = generateSchedule(terms);
+    const totals = scheduleTotals(rows);
+    const firstDue = input.firstDueDate ? toDate(input.firstDueDate) : toDate(rows[0].dueDate);
+
+    // 3. Eliminar imputaciones previas de pago y cuotas antiguas
+    await tx.paymentAllocation.deleteMany({
+      where: { payment: { loanId: loan.id } },
+    });
+
+    await tx.loanInstallment.deleteMany({
+      where: { loanId: loan.id },
+    });
+
+    // 4. Crear el nuevo cronograma en BD
+    await tx.loanInstallment.createMany({
+      data: rows.map((r) => ({
+        loanId: loan.id,
+        period: r.period,
+        dueDate: toDate(r.dueDate),
+        openingBalance: new Prisma.Decimal(r.openingBalance),
+        scheduledPayment: new Prisma.Decimal(r.scheduledPayment),
+        interest: new Prisma.Decimal(r.interest),
+        principal: new Prisma.Decimal(r.principal),
+        extraPrincipal: new Prisma.Decimal(r.extraPrincipal),
+        accruedMora: new Prisma.Decimal(r.accruedMora),
+        closingBalance: new Prisma.Decimal(r.closingBalance),
+        paidInterest: new Prisma.Decimal(0),
+        paidPrincipal: new Prisma.Decimal(0),
+        paidMora: new Prisma.Decimal(0),
+        status: "PENDIENTE",
+      })),
+    });
+
+    const newInstallments = await tx.loanInstallment.findMany({
+      where: { loanId: loan.id },
+      orderBy: { period: "asc" },
+    });
+
+    // 5. Eliminar ingresos previos en libro mayor correspondientes a pagos
+    await tx.ledgerEntry.deleteMany({
+      where: {
+        loanId: loan.id,
+        direction: "INGRESO",
+      },
+    });
+
+    // 6. Si hay pagos registrados, re-aplicarlos secuencialmente
+    let loanFullySettled = false;
+    if (loan.payments.length > 0) {
+      const currentRows: ScheduleRow[] = newInstallments.map((inst) => ({
+        period: inst.period,
+        dueDate: dbDateToIso(inst.dueDate),
+        openingBalance: Number(inst.openingBalance),
+        scheduledPayment: Number(inst.scheduledPayment),
+        interest: Number(inst.interest),
+        principal: Number(inst.principal),
+        extraPrincipal: Number(inst.extraPrincipal),
+        accruedMora: Number(inst.accruedMora),
+        closingBalance: Number(inst.closingBalance),
+        totalDue: Number(inst.scheduledPayment) + Number(inst.accruedMora),
+      }));
+
+      const paidByPeriod = new Map<number, { mora: number; interest: number; principal: number }>();
+
+      for (const p of loan.payments) {
+        const pAmount = Number(p.amount);
+        const pDate = p.paidAt;
+
+        const rawSnapshots = buildSnapshots(currentRows, paidByPeriod, terms.mora, pDate);
+        const plan = planPayment({
+          snapshots: rawSnapshots,
+          amount: pAmount,
+          kind: (p.kind as PaymentKind) ?? "CUOTA",
+          asOf: pDate,
+        });
+
+        if (plan.allocations.length > 0) {
+          const appliedAllocations = plan.allocations.map((a) => {
+            const inst = newInstallments.find((i) => i.period === a.period);
+            return {
+              paymentId: p.id,
+              installmentId: inst?.id ?? null,
+              period: a.period,
+              type: a.type as "MORA" | "INTERES" | "CAPITAL" | "ABONO_EXTRA",
+              amount: new Prisma.Decimal(a.amount),
+            };
+          });
+
+          await tx.paymentAllocation.createMany({ data: appliedAllocations });
+
+          for (const a of plan.allocations) {
+            const acc = paidByPeriod.get(a.period) ?? { mora: 0, interest: 0, principal: 0 };
+            if (a.type === "MORA") acc.mora += a.amount;
+            if (a.type === "INTERES") acc.interest += a.amount;
+            if (a.type === "CAPITAL" || a.type === "ABONO_EXTRA") acc.principal += a.amount;
+            paidByPeriod.set(a.period, acc);
+          }
+
+          for (const a of plan.allocations) {
+            await tx.ledgerEntry.create({
+              data: {
+                loanId: loan.id,
+                paymentId: p.id,
+                category: a.type as "MORA" | "INTERES" | "CAPITAL",
+                direction: "INGRESO",
+                amount: new Prisma.Decimal(a.amount),
+                entryDate: pDate,
+                notes: `Recibo ${p.receiptNo} (Cuota ${a.period} ${a.type.toLowerCase()})`,
+              },
+            });
+          }
+        }
+      }
+
+      let allPaid = true;
+      for (const inst of newInstallments) {
+        const paid = paidByPeriod.get(inst.period) ?? { mora: 0, interest: 0, principal: 0 };
+        const totalDue = Number(inst.scheduledPayment);
+        const settled = paid.mora + paid.interest + paid.principal;
+        const isFullyPaid = settled >= totalDue - 0.01;
+        if (!isFullyPaid) allPaid = false;
+
+        await tx.loanInstallment.update({
+          where: { id: inst.id },
+          data: {
+            paidMora: new Prisma.Decimal(paid.mora),
+            paidInterest: new Prisma.Decimal(paid.interest),
+            paidPrincipal: new Prisma.Decimal(paid.principal),
+            status: isFullyPaid ? "PAGADA" : settled > 0 ? "PARCIAL" : "PENDIENTE",
+            paidAt: isFullyPaid ? new Date() : null,
+          },
+        });
+      }
+      loanFullySettled = allPaid;
+    }
+
+    // 7. Determinar estado
+    let finalStatus: LoanStatus = input.status ?? loan.status;
+    if (loanFullySettled && loan.payments.length > 0) {
+      finalStatus = "PAGADO";
+    } else if (finalStatus === "PAGADO" && !loanFullySettled && loan.payments.length > 0) {
+      finalStatus = "VIGENTE";
+    }
+
+    // 8. Actualizar registro del préstamo
+    const updatedLoan = await tx.loan.update({
+      where: { id: loan.id },
+      data: {
+        clientId: input.clientId,
+        principal: new Prisma.Decimal(input.principal),
+        termPeriods: input.termPeriods,
+        disbursementDate: disbursement,
+        firstDueDate: firstDue,
+        notes: input.notes ?? null,
+        status: finalStatus,
+        rateSnapshot: new Prisma.Decimal(fractionRate),
+        frequencySnapshot: frequency,
+        interestTypeSnapshot: interestType,
+        methodSnapshot: amortizationMethod,
+        moraDailyRateSnapshot: new Prisma.Decimal(moraDailyRate),
+        moraGraceDaysSnapshot: moraGraceDays,
+        extraStrategySnapshot: input.extraPaymentStrategy ?? loan.extraStrategySnapshot,
+        paidOffAt: finalStatus === "PAGADO" ? (loan.paidOffAt ?? new Date()) : null,
+      },
+    });
+
+    // 9. Actualizar libro mayor para el egreso de capital inicial
+    const capitalEntry = await tx.ledgerEntry.findFirst({
+      where: {
+        loanId: loan.id,
+        category: "CAPITAL",
+        direction: "EGRESO",
+      },
+    });
+
+    if (capitalEntry) {
+      await tx.ledgerEntry.update({
+        where: { id: capitalEntry.id },
+        data: {
+          amount: new Prisma.Decimal(input.principal),
+          entryDate: disbursement,
+          notes: `Desembolso de préstamo ${loan.code}`,
+        },
+      });
+    } else {
+      await tx.ledgerEntry.create({
+        data: {
+          loanId: loan.id,
+          category: "CAPITAL",
+          direction: "EGRESO",
+          amount: new Prisma.Decimal(input.principal),
+          entryDate: disbursement,
+          notes: `Desembolso de préstamo ${loan.code}`,
+        },
+      });
+    }
+
+    return { loan: updatedLoan, totals };
+  });
+}
+
+/**
+ * Elimina completamente un préstamo y todos sus registros vinculados
+ * (cuotas, pagos, imputaciones, libro mayor y eventos).
+ */
+export async function deleteLoan(loanId: string) {
+  return prisma.$transaction(async (tx) => {
+    const loan = await tx.loan.findUnique({
+      where: { id: loanId },
+      select: { id: true, code: true },
+    });
+    if (!loan) throw new Error("El préstamo no existe o ya fue eliminado.");
+
+    await tx.paymentAllocation.deleteMany({
+      where: { payment: { loanId: loan.id } },
+    });
+
+    await tx.ledgerEntry.deleteMany({
+      where: { loanId: loan.id },
+    });
+
+    await tx.loanEvent.deleteMany({
+      where: { loanId: loan.id },
+    });
+
+    await tx.payment.deleteMany({
+      where: { loanId: loan.id },
+    });
+
+    await tx.loanInstallment.deleteMany({
+      where: { loanId: loan.id },
+    });
+
+    await tx.loan.delete({
+      where: { id: loan.id },
+    });
+
+    return loan;
+  });
 }

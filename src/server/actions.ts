@@ -5,7 +5,13 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { can, requireUser } from "@/server/auth";
-import { createLoan, registerPayment, renewBulletLoan } from "@/server/loans";
+import {
+  createLoan,
+  registerPayment,
+  renewBulletLoan,
+  updateLoan,
+  deleteLoan,
+} from "@/server/loans";
 import { AMORTIZATION_METHODS } from "@/domain/types";
 import { parseMoneyInput, parsePercentInput, parseIntegerInput } from "@/domain/parse";
 import { formatCOP } from "@/components/format";
@@ -337,6 +343,128 @@ export async function createLoanAction(
   revalidatePath("/loans");
   revalidatePath("/dashboard");
   redirect(`/loans/${createdLoanId}`);
+}
+
+const updateLoanSchema = loanSchema.extend({
+  loanId: z.string().min(1, "ID del préstamo requerido."),
+  status: z.enum(["VIGENTE", "PAGADO", "REESTRUCTURADO", "CASTIGADO"]).optional(),
+});
+
+export async function updateLoanAction(
+  _prev: FormState,
+  form: FormData,
+): Promise<FormState> {
+  const user = await requireUser();
+  if (!can(user.role, "loans:write")) return { error: "No tienes permiso." };
+
+  const parsed = updateLoanSchema.safeParse({
+    loanId: str(form, "loanId"),
+    clientId: str(form, "clientId"),
+    rateProfileId: str(form, "rateProfileId") || null,
+    principal: moneyField(form, "principal"),
+    ratePercent: percentField(form, "ratePercent"),
+    frequency: str(form, "frequency") || "MENSUAL",
+    interestType: str(form, "interestType") || "COMPUESTA",
+    amortizationMethod: str(form, "amortizationMethod") || "OUTSTANDING_BALANCE",
+    termPeriods: intField(form, "termPeriods"),
+    disbursementDate: str(form, "disbursementDate"),
+    firstDueDate: str(form, "firstDueDate") || null,
+    moraDailyRatePercent: percentField(form, "moraDailyRatePercent"),
+    moraGraceDays: intField(form, "moraGraceDays"),
+    extraPaymentStrategy:
+      (str(form, "extraPaymentStrategy") as "REDUCIR_CUOTA" | "REDUCIR_PLAZO") ||
+      "REDUCIR_CUOTA",
+    status:
+      (str(form, "status") as
+        | "VIGENTE"
+        | "PAGADO"
+        | "REESTRUCTURADO"
+        | "CASTIGADO") || undefined,
+    notes: str(form, "notes") || undefined,
+  });
+
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+
+  try {
+    const { loan } = await updateLoan({
+      loanId: parsed.data.loanId,
+      clientId: parsed.data.clientId,
+      principal: parsed.data.principal,
+      ratePercent: parsed.data.ratePercent,
+      frequency: parsed.data.frequency,
+      interestType: parsed.data.interestType,
+      amortizationMethod: parsed.data.amortizationMethod,
+      termPeriods: parsed.data.termPeriods,
+      disbursementDate: parsed.data.disbursementDate,
+      firstDueDate: parsed.data.firstDueDate,
+      moraDailyRatePercent: parsed.data.moraDailyRatePercent,
+      moraGraceDays: parsed.data.moraGraceDays,
+      extraPaymentStrategy: parsed.data.extraPaymentStrategy,
+      status: parsed.data.status,
+      notes: parsed.data.notes,
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: "UPDATE",
+        entity: "Loan",
+        entityId: loan.id,
+        details: {
+          code: loan.code,
+          principal: parsed.data.principal,
+          status: loan.status,
+        },
+      },
+    });
+  } catch (e) {
+    return {
+      error:
+        e instanceof Error
+          ? e.message
+          : "No se pudo actualizar el préstamo.",
+    };
+  }
+
+  revalidatePath("/loans");
+  revalidatePath(`/loans/${parsed.data.loanId}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/reports");
+  redirect(`/loans/${parsed.data.loanId}`);
+}
+
+export async function deleteLoanAction(
+  _prev: FormState,
+  form: FormData,
+): Promise<FormState> {
+  const user = await requireUser();
+  if (!can(user.role, "loans:write")) return { error: "No tienes permiso." };
+
+  const loanId = str(form, "loanId");
+  if (!loanId) return { error: "ID de préstamo no proporcionado." };
+
+  try {
+    const loan = await deleteLoan(loanId);
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: "DELETE",
+        entity: "Loan",
+        entityId: loanId,
+        details: { code: loan.code },
+      },
+    });
+  } catch (e) {
+    return {
+      error:
+        e instanceof Error ? e.message : "Error al eliminar el préstamo.",
+    };
+  }
+
+  revalidatePath("/loans");
+  revalidatePath("/dashboard");
+  revalidatePath("/reports");
+  redirect("/loans");
 }
 
 const renewBulletSchema = z.object({
