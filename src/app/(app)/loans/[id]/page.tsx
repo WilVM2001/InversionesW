@@ -252,8 +252,8 @@ export default async function LoanDetailPage({
         </section>
       </div>
 
-      {/* Tabla del Cronograma de Amortización */}
-      <section className="card overflow-x-auto">
+      {/* Cronograma de Amortización */}
+      <section className="card">
         <div className="border-b border-ink-200 px-5 py-4">
           <h2 className="text-sm font-semibold text-ink-900">
             Cronograma de amortización
@@ -263,89 +263,167 @@ export default async function LoanDetailPage({
           </p>
         </div>
 
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-ink-200 text-left text-xs font-semibold text-ink-600 bg-ink-50/50">
-              <th className="px-4 py-3">#</th>
-              <th className="px-4 py-3">Vencimiento</th>
-              <th className="px-4 py-3 text-right">Saldo inicial</th>
-              <th className="px-4 py-3 text-right">Cuota</th>
-              <th className="px-4 py-3 text-right">Interés</th>
-              <th className="px-4 py-3 text-right">Capital</th>
-              {hasExtraPrincipal && <th className="px-4 py-3 text-right text-brand-700">Abono extra</th>}
-              <th className="px-4 py-3 text-right">Mora</th>
-              <th className="px-4 py-3 text-right">Saldo final</th>
-              <th className="px-4 py-3">Estado</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-ink-100">
-            {snapshots.map((s) => {
-              const st = INSTALLMENT_STYLES[s.status] ?? INSTALLMENT_STYLES.PENDIENTE;
-              const isOverdue = s.status === "VENCIDA";
-              const isCancelled = s.status === "ANULADA";
+        {/* Vista Móvil del Cronograma (< md:) */}
+        <div className="divide-y divide-ink-100 md:hidden">
+          {snapshots.map((s) => {
+            const st = INSTALLMENT_STYLES[s.status] ?? INSTALLMENT_STYLES.PENDIENTE;
+            const isOverdue = s.status === "VENCIDA";
+            const isCancelled = s.status === "ANULADA";
 
-              return (
-                <tr
-                  key={s.row.period}
-                  className={
-                    isOverdue
-                      ? "bg-danger-500/5"
-                      : isCancelled
-                        ? "bg-ink-100/60 opacity-60 line-through"
-                        : undefined
-                  }
-                >
-                  <td className="tabular px-4 py-2.5 font-medium text-ink-500">{s.row.period}</td>
-                  <td className="tabular px-4 py-2.5">{formatDate(s.row.dueDate)}</td>
-                  <td className="tabular px-4 py-2.5 text-right text-ink-600">
-                    {formatCOPWhole(s.row.openingBalance)}
-                  </td>
-                  <td className="tabular px-4 py-2.5 text-right font-medium text-ink-900">
+            return (
+              <div
+                key={s.row.period}
+                className={`p-4 space-y-2.5 ${
+                  isOverdue
+                    ? "bg-danger-500/5"
+                    : isCancelled
+                      ? "bg-ink-100/60 opacity-60"
+                      : "bg-white"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-sm text-ink-900">Cuota #{s.row.period}</span>
+                    <span className="text-xs text-ink-500">· {formatDate(s.row.dueDate)}</span>
+                  </div>
+                  <Badge className={st.className}>{st.label}</Badge>
+                </div>
+
+                <div className="flex items-baseline justify-between pt-1">
+                  <span className="text-xs text-ink-500 font-medium">Cuota total:</span>
+                  <span className="tabular font-bold text-base text-ink-900">
                     {formatCOP(s.row.scheduledPayment)}
-                  </td>
-                  <td className="tabular px-4 py-2.5 text-right text-ink-600">
-                    {formatCOP(s.row.interest)}
-                  </td>
-                  <td className="tabular px-4 py-2.5 text-right text-ink-600">
-                    {formatCOP(s.row.principal)}
-                  </td>
-                  {hasExtraPrincipal && (
-                    <td className="tabular px-4 py-2.5 text-right font-semibold text-brand-700">
-                      {s.row.extraPrincipal > 0 ? formatCOP(s.row.extraPrincipal) : "—"}
-                    </td>
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 bg-ink-50/70 p-2 rounded-lg text-xs text-ink-700">
+                  <div>
+                    <span className="text-ink-500 block">Interés:</span>
+                    <span className="tabular font-medium">{formatCOP(s.row.interest)}</span>
+                  </div>
+                  <div>
+                    <span className="text-ink-500 block">Capital:</span>
+                    <span className="tabular font-medium">{formatCOP(s.row.principal)}</span>
+                  </div>
+                  {s.currentMora > 0 && (
+                    <div className="col-span-2 text-danger-700 font-medium pt-1 border-t border-ink-100">
+                      Mora exigible: {formatCOP(s.currentMora)}
+                    </div>
                   )}
-                  <td className="tabular px-4 py-2.5 text-right text-danger-600 font-medium">
-                    {s.currentMora > 0 ? formatCOP(s.currentMora) : "—"}
-                  </td>
-                  <td className="tabular px-4 py-2.5 text-right font-medium text-ink-800">
+                  {hasExtraPrincipal && s.row.extraPrincipal > 0 && (
+                    <div className="col-span-2 text-brand-700 font-semibold pt-1 border-t border-ink-100">
+                      Abono extra: {formatCOP(s.row.extraPrincipal)}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between text-xs text-ink-500 pt-1">
+                  <span>Saldo de capital final:</span>
+                  <span className="tabular font-semibold text-ink-800">
                     {formatCOPWhole(s.row.closingBalance)}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <Badge className={st.className}>{st.label}</Badge>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            <tr className="border-t-2 border-ink-300 bg-ink-50 font-semibold text-ink-900">
-              <td className="px-4 py-3" colSpan={3}>
-                Totales activos
-              </td>
-              <td className="tabular px-4 py-3 text-right">
-                {formatCOPWhole(totals.totalScheduled)}
-              </td>
-              <td className="tabular px-4 py-3 text-right text-brand-700">
-                {formatCOPWhole(totals.totalInterest)}
-              </td>
-              <td className="tabular px-4 py-3 text-right">
-                {formatCOPWhole(totals.totalPrincipal)}
-              </td>
-              {hasExtraPrincipal && <td className="px-4 py-3" />}
-              <td className="px-4 py-3" colSpan={2} />
-            </tr>
-          </tfoot>
-        </table>
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+          <div className="p-4 bg-ink-50 font-semibold text-xs text-ink-900 space-y-1">
+            <div className="flex justify-between">
+              <span>Total programado:</span>
+              <span className="tabular font-bold">{formatCOPWhole(totals.totalScheduled)}</span>
+            </div>
+            <div className="flex justify-between text-brand-700">
+              <span>Total intereses:</span>
+              <span className="tabular font-bold">{formatCOPWhole(totals.totalInterest)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Vista Escritorio del Cronograma (>= md:) */}
+        <div className="overflow-x-auto hidden md:block">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-ink-200 text-left text-xs font-semibold text-ink-600 bg-ink-50/50">
+                <th className="px-4 py-3">#</th>
+                <th className="px-4 py-3">Vencimiento</th>
+                <th className="px-4 py-3 text-right">Saldo inicial</th>
+                <th className="px-4 py-3 text-right">Cuota</th>
+                <th className="px-4 py-3 text-right">Interés</th>
+                <th className="px-4 py-3 text-right">Capital</th>
+                {hasExtraPrincipal && <th className="px-4 py-3 text-right text-brand-700">Abono extra</th>}
+                <th className="px-4 py-3 text-right">Mora</th>
+                <th className="px-4 py-3 text-right">Saldo final</th>
+                <th className="px-4 py-3">Estado</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-ink-100">
+              {snapshots.map((s) => {
+                const st = INSTALLMENT_STYLES[s.status] ?? INSTALLMENT_STYLES.PENDIENTE;
+                const isOverdue = s.status === "VENCIDA";
+                const isCancelled = s.status === "ANULADA";
+
+                return (
+                  <tr
+                    key={s.row.period}
+                    className={
+                      isOverdue
+                        ? "bg-danger-500/5"
+                        : isCancelled
+                          ? "bg-ink-100/60 opacity-60 line-through"
+                          : undefined
+                    }
+                  >
+                    <td className="tabular px-4 py-2.5 font-medium text-ink-500">{s.row.period}</td>
+                    <td className="tabular px-4 py-2.5">{formatDate(s.row.dueDate)}</td>
+                    <td className="tabular px-4 py-2.5 text-right text-ink-600">
+                      {formatCOPWhole(s.row.openingBalance)}
+                    </td>
+                    <td className="tabular px-4 py-2.5 text-right font-medium text-ink-900">
+                      {formatCOP(s.row.scheduledPayment)}
+                    </td>
+                    <td className="tabular px-4 py-2.5 text-right text-ink-600">
+                      {formatCOP(s.row.interest)}
+                    </td>
+                    <td className="tabular px-4 py-2.5 text-right text-ink-600">
+                      {formatCOP(s.row.principal)}
+                    </td>
+                    {hasExtraPrincipal && (
+                      <td className="tabular px-4 py-2.5 text-right font-semibold text-brand-700">
+                        {s.row.extraPrincipal > 0 ? formatCOP(s.row.extraPrincipal) : "—"}
+                      </td>
+                    )}
+                    <td className="tabular px-4 py-2.5 text-right text-danger-600 font-medium">
+                      {s.currentMora > 0 ? formatCOP(s.currentMora) : "—"}
+                    </td>
+                    <td className="tabular px-4 py-2.5 text-right font-medium text-ink-800">
+                      {formatCOPWhole(s.row.closingBalance)}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <Badge className={st.className}>{st.label}</Badge>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-ink-300 bg-ink-50 font-semibold text-ink-900">
+                <td className="px-4 py-3" colSpan={3}>
+                  Totales activos
+                </td>
+                <td className="tabular px-4 py-3 text-right">
+                  {formatCOPWhole(totals.totalScheduled)}
+                </td>
+                <td className="tabular px-4 py-3 text-right text-brand-700">
+                  {formatCOPWhole(totals.totalInterest)}
+                </td>
+                <td className="tabular px-4 py-3 text-right">
+                  {formatCOPWhole(totals.totalPrincipal)}
+                </td>
+                {hasExtraPrincipal && <td className="px-4 py-3" />}
+                <td className="px-4 py-3" colSpan={2} />
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       </section>
 
       {/* Formulario de Pago */}
@@ -377,55 +455,109 @@ export default async function LoanDetailPage({
 
       {/* Historial de Comprobantes de Pago */}
       {view.payments.length > 0 ? (
-        <section className="card overflow-x-auto">
+        <section className="card">
           <div className="border-b border-ink-200 px-5 py-4">
             <h2 className="text-sm font-semibold text-ink-900">Historial de pagos y abonos</h2>
           </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-ink-200 text-left text-xs font-semibold text-ink-600 bg-ink-50/50">
-                <th className="px-4 py-3">Recibo</th>
-                <th className="px-4 py-3">Fecha</th>
-                <th className="px-4 py-3">Tipo</th>
-                <th className="px-4 py-3">Canal</th>
-                <th className="px-4 py-3">Desglose aplicado</th>
-                <th className="px-4 py-3 text-right">Monto recibido</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-ink-100">
-              {view.payments.map((p) => {
-                const isExtra = p.kind === "ABONO_CAPITAL" || p.allocations.some((a) => a.type === "ABONO_EXTRA");
-                return (
-                  <tr key={p.id} className="hover:bg-ink-50/60">
-                    <td className="tabular px-4 py-3 font-semibold text-ink-900">{p.receiptNo}</td>
-                    <td className="tabular px-4 py-3 text-ink-600">{formatDate(p.paidAt)}</td>
-                    <td className="px-4 py-3">
-                      {isExtra ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700 ring-1 ring-brand-200">
-                          <Sparkles size={11} /> Abono a capital
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center rounded-full bg-ink-100 px-2.5 py-0.5 text-xs font-medium text-ink-700">
-                          Cuota ordinaria
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-ink-600 font-medium">{p.method}</td>
-                    <td className="px-4 py-3 text-xs text-ink-500">
-                      {p.allocations.length > 0
-                        ? p.allocations
-                            .map((a) => `C${a.period} ${a.type.toLowerCase()} (${formatCOPWhole(Number(a.amount))})`)
-                            .join(", ")
-                        : "Sin imputar"}
-                    </td>
-                    <td className="tabular px-4 py-3 text-right font-bold text-ink-900">
+
+          {/* Vista Móvil de Pagos (< md:) */}
+          <div className="divide-y divide-ink-100 md:hidden">
+            {view.payments.map((p) => {
+              const isExtra =
+                p.kind === "ABONO_CAPITAL" ||
+                p.allocations.some((a) => a.type === "ABONO_EXTRA");
+
+              return (
+                <div key={p.id} className="p-4 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-sm text-ink-900">{p.receiptNo}</span>
+                    {isExtra ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700 ring-1 ring-brand-200">
+                        <Sparkles size={11} /> Abono capital
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center rounded-full bg-ink-100 px-2.5 py-0.5 text-xs font-medium text-ink-700">
+                        Cuota ordinaria
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-xs text-ink-500 font-medium">Monto recibido:</span>
+                    <span className="tabular font-bold text-base text-ink-900">
                       {formatCOP(p.amount)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs text-ink-500">
+                    <span>Fecha: {formatDate(p.paidAt)}</span>
+                    <span className="font-medium text-ink-700">Canal: {p.method}</span>
+                  </div>
+
+                  {p.allocations.length > 0 && (
+                    <div className="bg-ink-50/70 p-2 rounded-lg text-xs text-ink-600">
+                      <span className="text-ink-400 block mb-0.5 font-medium">Desglose aplicado:</span>
+                      {p.allocations
+                        .map(
+                          (a) =>
+                            `C${a.period} ${a.type.toLowerCase()} (${formatCOPWhole(Number(a.amount))})`
+                        )
+                        .join(", ")}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Vista Escritorio de Pagos (>= md:) */}
+          <div className="overflow-x-auto hidden md:block">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-ink-200 text-left text-xs font-semibold text-ink-600 bg-ink-50/50">
+                  <th className="px-4 py-3">Recibo</th>
+                  <th className="px-4 py-3">Fecha</th>
+                  <th className="px-4 py-3">Tipo</th>
+                  <th className="px-4 py-3">Canal</th>
+                  <th className="px-4 py-3">Desglose aplicado</th>
+                  <th className="px-4 py-3 text-right">Monto recibido</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-ink-100">
+                {view.payments.map((p) => {
+                  const isExtra = p.kind === "ABONO_CAPITAL" || p.allocations.some((a) => a.type === "ABONO_EXTRA");
+                  return (
+                    <tr key={p.id} className="hover:bg-ink-50/60 transition">
+                      <td className="tabular px-4 py-3 font-semibold text-ink-900">{p.receiptNo}</td>
+                      <td className="tabular px-4 py-3 text-ink-600">{formatDate(p.paidAt)}</td>
+                      <td className="px-4 py-3">
+                        {isExtra ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700 ring-1 ring-brand-200">
+                            <Sparkles size={11} /> Abono a capital
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full bg-ink-100 px-2.5 py-0.5 text-xs font-medium text-ink-700">
+                            Cuota ordinaria
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-ink-600 font-medium">{p.method}</td>
+                      <td className="px-4 py-3 text-xs text-ink-500">
+                        {p.allocations.length > 0
+                          ? p.allocations
+                              .map((a) => `C${a.period} ${a.type.toLowerCase()} (${formatCOPWhole(Number(a.amount))})`)
+                              .join(", ")
+                          : "Sin imputar"}
+                      </td>
+                      <td className="tabular px-4 py-3 text-right font-bold text-ink-900">
+                        {formatCOP(p.amount)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </section>
       ) : null}
     </div>

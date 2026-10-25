@@ -462,9 +462,25 @@ export async function listClients(query?: string) {
   });
 }
 
-export async function listLoans(status?: string) {
+export async function listLoans(status?: string, query?: string) {
+  const whereClause: Prisma.LoanWhereInput = {};
+
+  if (status && status !== "TODOS") {
+    whereClause.status = status as never;
+  }
+
+  if (query && query.trim()) {
+    const q = query.trim();
+    whereClause.OR = [
+      { code: { contains: q, mode: "insensitive" } },
+      { client: { firstName: { contains: q, mode: "insensitive" } } },
+      { client: { lastName: { contains: q, mode: "insensitive" } } },
+      { client: { documentId: { contains: q, mode: "insensitive" } } },
+    ];
+  }
+
   return prisma.loan.findMany({
-    where: status && status !== "TODOS" ? { status: status as never } : undefined,
+    where: Object.keys(whereClause).length > 0 ? whereClause : undefined,
     include: {
       client: true,
       installments: {

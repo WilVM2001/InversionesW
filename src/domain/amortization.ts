@@ -328,6 +328,9 @@ export interface RenewBulletScheduleResult {
  */
 export function renewBulletSchedule(input: RenewBulletScheduleInput): RenewBulletScheduleResult {
   const { lastMaturityRow, newTermMonths, rate, frequency } = input;
+  if (!lastMaturityRow) {
+    throw new Error("La cuota de vencimiento es requerida para procesar la prórroga.");
+  }
   if (newTermMonths < 1) {
     throw new Error("El plazo de prórroga debe ser de al menos 1 período.");
   }
